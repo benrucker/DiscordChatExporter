@@ -12,14 +12,14 @@ namespace DiscordChatExporter.Core.Exporting;
 public class ChannelExporter(DiscordClient discord)
 {
     /// <summary>
-    /// Exports a channel.
+    /// Exports a channel and returns the number of messages exported.
     /// </summary>
     /// <param name="request">The export request configuration.</param>
     /// <param name="channels">Optional pre-fetched channels for the guild (to avoid redundant API calls).</param>
     /// <param name="roles">Optional pre-fetched roles for the guild (to avoid redundant API calls).</param>
     /// <param name="progress">Optional progress reporter.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    public async ValueTask ExportChannelAsync(
+    public async ValueTask<long> ExportChannelAsync(
         ExportRequest request,
         IReadOnlyList<Channel>? channels = null,
         IReadOnlyList<Role>? roles = null,
@@ -110,5 +110,7 @@ public class ChannelExporter(DiscordClient discord)
                 );
             }
         }
+
+        return messageExporter.MessagesExported;
     }
 }

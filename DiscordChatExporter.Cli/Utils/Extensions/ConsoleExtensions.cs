@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Threading.Tasks;
 using CliFx.Infrastructure;
+using DiscordChatExporter.Cli.Utils;
 using Spectre.Console;
 
 namespace DiscordChatExporter.Cli.Utils.Extensions;
@@ -32,7 +33,8 @@ internal static class ConsoleExtensions
                 .Columns(
                     new TaskDescriptionColumn { Alignment = Justify.Left },
                     new ProgressBarColumn(),
-                    new PercentageColumn()
+                    new PercentageColumn(),
+                    new StatusColumn()
                 );
     }
 

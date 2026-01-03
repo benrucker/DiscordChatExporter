@@ -26,6 +26,35 @@ public class DiscordClient(
     private readonly Uri _baseUri = new("https://discord.com/api/v10/", UriKind.Absolute);
     private TokenKind? _resolvedTokenKind;
 
+    // Use scoped logger so each export task can have its own logger
+    private static IStatusLogger Log => ScopedStatusLogger.Current;
+
+    private static string GetActionFromUrl(string url)
+    {
+        // Extract a human-readable action description from the API URL
+        // Order matters - check more specific patterns first
+        if (url.Contains("/messages"))
+            return "Fetch messages";
+        if (url.Contains("/members/"))
+            return "Fetch member";
+        if (url.Contains("/channels"))
+            return "Fetch channels";
+        if (url.Contains("/roles"))
+            return "Fetch roles";
+        if (url.Contains("/threads"))
+            return "Fetch threads";
+        if (url.Contains("/reactions/"))
+            return "Fetch reactions";
+        if (url.StartsWith("guilds/"))
+            return "Fetch guild";
+        if (url.StartsWith("users/"))
+            return "Fetch user";
+        if (url.StartsWith("invites/"))
+            return "Fetch invite";
+
+        return "API request";
+    }
+
     private async ValueTask<HttpResponseMessage> GetResponseAsync(
         string url,
         TokenKind tokenKind,
@@ -83,6 +112,8 @@ public class DiscordClient(
                             // is not actually enforced by the server. So we cap it at a reasonable value.
                             .Clamp(TimeSpan.Zero, TimeSpan.FromSeconds(60));
 
+                        var action = GetActionFromUrl(url);
+                        Log.Log($"{action} rate limited, waiting {delay.TotalSeconds:F1}s...");
                         await Task.Delay(delay, innerCancellationToken);
                     }
                 }
@@ -243,6 +274,7 @@ public class DiscordClient(
         if (guildId == Guild.DirectMessages.Id)
             return Guild.DirectMessages;
 
+        Log.Log($"Fetching guild {guildId}...");
         var response = await GetJsonResponseAsync($"guilds/{guildId}", cancellationToken);
         return Guild.Parse(response);
     }
@@ -252,6 +284,7 @@ public class DiscordClient(
         [EnumeratorCancellation] CancellationToken cancellationToken = default
     )
     {
+        Log.Log($"Fetching channels for guild {guildId}...");
         if (guildId == Guild.DirectMessages.Id)
         {
             var response = await GetJsonResponseAsync("users/@me/channels", cancellationToken);
@@ -329,6 +362,7 @@ public class DiscordClient(
         if (guildId == Guild.DirectMessages.Id)
             yield break;
 
+        Log.Log($"Fetching roles for guild {guildId}...");
         var response = await GetJsonResponseAsync($"guilds/{guildId}/roles", cancellationToken);
         foreach (var roleJson in response.EnumerateArray())
             yield return Role.Parse(roleJson);
@@ -343,6 +377,7 @@ public class DiscordClient(
         if (guildId == Guild.DirectMessages.Id)
             return null;
 
+        Log.Log($"Fetching member {memberId}...");
         var response = await TryGetJsonResponseAsync(
             $"guilds/{guildId}/members/{memberId}",
             cancellationToken
@@ -581,6 +616,7 @@ public class DiscordClient(
         var firstMessage = default(Message);
 
         var currentAfter = after ?? Snowflake.Zero;
+        var totalMessagesFetched = 0;
         while (true)
         {
             var url = new UrlBuilder()
@@ -589,6 +625,7 @@ public class DiscordClient(
                 .SetQueryParameter("after", currentAfter.ToString())
                 .Build();
 
+            Log.Log($"Fetching messages (after {currentAfter})...");
             var response = await GetJsonResponseAsync(url, cancellationToken);
 
             var messages = response
@@ -597,6 +634,9 @@ public class DiscordClient(
                 // Messages are returned from newest to oldest, so we need to reverse them
                 .Reverse()
                 .ToArray();
+
+            totalMessagesFetched += messages.Length;
+            Log.Log($"Received {messages.Length} messages (total: {totalMessagesFetched})");
 
             // Break if there are no messages (can happen if messages are deleted during execution)
             if (!messages.Any())

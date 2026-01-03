@@ -21,6 +21,9 @@ internal partial class ExportAssetDownloader(
 {
     private static readonly AsyncKeyedLocker<string> Locker = new();
 
+    // Use scoped logger so each export task can have its own logger
+    private static IStatusLogger Log => ScopedStatusLogger.Current;
+
     // File paths of the previously downloaded assets
     private readonly Dictionary<string, string> _previousPathsByUrl = new(StringComparer.Ordinal);
 
@@ -44,6 +47,14 @@ internal partial class ExportAssetDownloader(
             return _previousPathsByUrl[url] = filePath;
 
         Directory.CreateDirectory(workingDirPath);
+
+        // Extract a short identifier for logging (last path segment or truncated URL)
+        var assetName =
+            url.Length > 50 ? url.Substring(url.LastIndexOf('/') + 1).Split('?')[0] : url;
+        if (assetName.Length > 40)
+            assetName = assetName.Substring(0, 37) + "...";
+
+        Log.Log($"Downloading asset: {assetName}");
 
         await Http.ResiliencePipeline.ExecuteAsync(
             async innerCancellationToken =>

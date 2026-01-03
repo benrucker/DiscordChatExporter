@@ -35,6 +35,9 @@ public abstract class DiscordCommandBase : ICommand
     )]
     public bool ShouldRespectRateLimits { get; init; } = true;
 
+    [CommandOption("verbose", 'v', Description = "Show detailed status messages during export.")]
+    public bool IsVerbose { get; init; } = false;
+
     [field: AllowNull, MaybeNull]
     protected DiscordClient Discord =>
         field ??= new DiscordClient(

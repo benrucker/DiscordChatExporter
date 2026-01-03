@@ -10,6 +10,7 @@ using CliFx.Exceptions;
 using CliFx.Infrastructure;
 using DiscordChatExporter.Cli.Commands.Converters;
 using DiscordChatExporter.Cli.Commands.Shared;
+using DiscordChatExporter.Cli.Utils;
 using DiscordChatExporter.Cli.Utils.Extensions;
 using DiscordChatExporter.Core.Discord;
 using DiscordChatExporter.Core.Discord.Data;
@@ -17,6 +18,7 @@ using DiscordChatExporter.Core.Exceptions;
 using DiscordChatExporter.Core.Exporting;
 using DiscordChatExporter.Core.Exporting.Filtering;
 using DiscordChatExporter.Core.Exporting.Partitioning;
+using DiscordChatExporter.Core.Utils;
 using Gress;
 using Spectre.Console;
 
@@ -289,7 +291,6 @@ public abstract class ExportCommandBase : DiscordCommandBase
 
         // Export
         var errorsByChannel = new ConcurrentDictionary<Channel, string>();
-        var warningsByChannel = new ConcurrentDictionary<Channel, string>();
 
         await console.Output.WriteLineAsync($"Exporting {unwrappedChannels.Count} channel(s)...");
         await console
@@ -317,6 +318,13 @@ public abstract class ExportCommandBase : DiscordCommandBase
                                 Markup.Escape(channel.GetHierarchicalName()),
                                 async progress =>
                                 {
+                                    // Set up scoped logger for this task (if verbose)
+                                    using var _ = IsVerbose
+                                        ? ScopedStatusLogger.Begin(
+                                            new ProgressTaskStatusLogger(progress)
+                                        )
+                                        : null;
+
                                     // Use pre-fetched guild data
                                     var guild = guildsById[channel.GuildId];
                                     var guildChannels = channelsByGuildId.GetValueOrDefault(
@@ -345,19 +353,23 @@ public abstract class ExportCommandBase : DiscordCommandBase
                                         ShouldNormalizeJson
                                     );
 
-                                    await Exporter.ExportChannelAsync(
+                                    var messagesExported = await Exporter.ExportChannelAsync(
                                         request,
                                         guildChannels,
                                         guildRoles,
                                         progress.ToPercentageBased(),
                                         innerCancellationToken
                                     );
+
+                                    ScopedStatusLogger.Current.Log(
+                                        $"Exported {messagesExported} message(s) from #{channel.Name}"
+                                    );
                                 }
                             );
                         }
-                        catch (ChannelEmptyException ex)
+                        catch (ChannelEmptyException)
                         {
-                            warningsByChannel[channel] = ex.Message;
+                            // Silently skip empty channels
                         }
                         catch (DiscordChatExporterException ex) when (!ex.IsFatal)
                         {
@@ -373,28 +385,6 @@ public abstract class ExportCommandBase : DiscordCommandBase
             await console.Output.WriteLineAsync(
                 $"Successfully exported {unwrappedChannels.Count - errorsByChannel.Count} channel(s)."
             );
-        }
-
-        // Print warnings
-        if (warningsByChannel.Any())
-        {
-            await console.Output.WriteLineAsync();
-
-            using (console.WithForegroundColor(ConsoleColor.Yellow))
-            {
-                await console.Error.WriteLineAsync(
-                    "Warnings reported for the following channel(s):"
-                );
-            }
-
-            foreach (var (channel, message) in warningsByChannel)
-            {
-                await console.Error.WriteAsync($"{channel.GetHierarchicalName()}: ");
-                using (console.WithForegroundColor(ConsoleColor.Yellow))
-                    await console.Error.WriteLineAsync(message);
-            }
-
-            await console.Error.WriteLineAsync();
         }
 
         // Print errors
