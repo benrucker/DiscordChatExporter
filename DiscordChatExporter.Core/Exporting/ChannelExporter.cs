@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using DiscordChatExporter.Core.Discord;
@@ -10,8 +11,18 @@ namespace DiscordChatExporter.Core.Exporting;
 
 public class ChannelExporter(DiscordClient discord)
 {
+    /// <summary>
+    /// Exports a channel.
+    /// </summary>
+    /// <param name="request">The export request configuration.</param>
+    /// <param name="channels">Optional pre-fetched channels for the guild (to avoid redundant API calls).</param>
+    /// <param name="roles">Optional pre-fetched roles for the guild (to avoid redundant API calls).</param>
+    /// <param name="progress">Optional progress reporter.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     public async ValueTask ExportChannelAsync(
         ExportRequest request,
+        IReadOnlyList<Channel>? channels = null,
+        IReadOnlyList<Role>? roles = null,
         IProgress<Percentage>? progress = null,
         CancellationToken cancellationToken = default
     )
@@ -29,7 +40,12 @@ public class ChannelExporter(DiscordClient discord)
 
         // Build context
         var context = new ExportContext(discord, request);
-        await context.PopulateChannelsAndRolesAsync(cancellationToken);
+
+        // Use pre-fetched channels/roles if provided, otherwise fetch from API
+        if (channels is not null && roles is not null)
+            context.PopulateChannelsAndRoles(channels, roles);
+        else
+            await context.PopulateChannelsAndRolesAsync(cancellationToken);
 
         await using var messageExporter = new MessageExporter(context);
 

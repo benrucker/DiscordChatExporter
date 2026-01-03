@@ -282,7 +282,13 @@ public partial class DashboardViewModel : ViewModelBase
                             shouldNormalizeJson: false
                         );
 
-                        await exporter.ExportChannelAsync(request, progress, cancellationToken);
+                        await exporter.ExportChannelAsync(
+                            request,
+                            channels: null,
+                            roles: null,
+                            progress,
+                            cancellationToken
+                        );
 
                         Interlocked.Increment(ref successfulExportCount);
                     }

@@ -229,6 +229,42 @@ public abstract class ExportCommandBase : DiscordCommandBase
             await console.Output.WriteLineAsync($"Fetched {fetchedThreadsCount} thread(s).");
         }
 
+        // Pre-fetch guilds, channels, and roles for all unique guilds to avoid redundant API calls
+        var guildIds = unwrappedChannels.Select(c => c.GuildId).Distinct().ToList();
+        var guildsById = new ConcurrentDictionary<Snowflake, Guild>();
+        var channelsByGuildId = new ConcurrentDictionary<Snowflake, IReadOnlyList<Channel>>();
+        var rolesByGuildId = new ConcurrentDictionary<Snowflake, IReadOnlyList<Role>>();
+
+        if (guildIds.Count > 0)
+        {
+            await console.Output.WriteLineAsync("Fetching guild data...");
+            await console
+                .CreateStatusTicker()
+                .StartAsync(
+                    "...",
+                    async ctx =>
+                    {
+                        foreach (var guildId in guildIds)
+                        {
+                            ctx.Status($"Fetching data for guild {guildId}...");
+
+                            var guild = await Discord.GetGuildAsync(guildId, cancellationToken);
+                            guildsById[guildId] = guild;
+
+                            var guildChannels = await Discord
+                                .GetGuildChannelsAsync(guildId, cancellationToken)
+                                .ToListAsync(cancellationToken);
+                            channelsByGuildId[guildId] = guildChannels;
+
+                            var guildRoles = await Discord
+                                .GetGuildRolesAsync(guildId, cancellationToken)
+                                .ToListAsync(cancellationToken);
+                            rolesByGuildId[guildId] = guildRoles;
+                        }
+                    }
+                );
+        }
+
         // Make sure the user does not try to export multiple channels into one file.
         // Output path must either be a directory or contain template tokens for this to work.
         // https://github.com/Tyrrrz/DiscordChatExporter/issues/799
@@ -281,9 +317,13 @@ public abstract class ExportCommandBase : DiscordCommandBase
                                 Markup.Escape(channel.GetHierarchicalName()),
                                 async progress =>
                                 {
-                                    var guild = await Discord.GetGuildAsync(
-                                        channel.GuildId,
-                                        innerCancellationToken
+                                    // Use pre-fetched guild data
+                                    var guild = guildsById[channel.GuildId];
+                                    var guildChannels = channelsByGuildId.GetValueOrDefault(
+                                        channel.GuildId
+                                    );
+                                    var guildRoles = rolesByGuildId.GetValueOrDefault(
+                                        channel.GuildId
                                     );
 
                                     var request = new ExportRequest(
@@ -307,6 +347,8 @@ public abstract class ExportCommandBase : DiscordCommandBase
 
                                     await Exporter.ExportChannelAsync(
                                         request,
+                                        guildChannels,
+                                        guildRoles,
                                         progress.ToPercentageBased(),
                                         innerCancellationToken
                                     );

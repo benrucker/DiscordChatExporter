@@ -35,10 +35,23 @@ internal class ExportContext(DiscordClient discord, ExportRequest request)
     public string FormatDate(DateTimeOffset instant, string format = "g") =>
         NormalizeDate(instant).ToString(format, Request.CultureInfo);
 
+    public void PopulateChannelsAndRoles(IEnumerable<Channel> channels, IEnumerable<Role> roles)
+    {
+        foreach (var channel in channels)
+            _channelsById[channel.Id] = channel;
+
+        foreach (var role in roles)
+            _rolesById[role.Id] = role;
+    }
+
     public async ValueTask PopulateChannelsAndRolesAsync(
         CancellationToken cancellationToken = default
     )
     {
+        // Skip if already populated
+        if (_channelsById.Count > 0 || _rolesById.Count > 0)
+            return;
+
         await foreach (
             var channel in Discord.GetGuildChannelsAsync(Request.Guild.Id, cancellationToken)
         )
