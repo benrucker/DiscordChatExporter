@@ -1,5 +1,12 @@
 # DiscordChatExporter
 
+This is a fork of **DiscordChatExporter** with additional changes specific to my use case of the program. It also acts as a test-bed for new features that could be upstreamed to the main fork.
+
+> [!WARNING]
+> This fork is not guaranteed to be stable or to serve every original workflow of DiscordChatExporter. It's focused on my personal set of requirements and could break at any time.
+
+## Original README below
+
 [![Status](https://img.shields.io/badge/status-maintenance-ffd700.svg)](https://github.com/Tyrrrz/.github/blob/master/docs/project-status.md)
 [![Made in Ukraine](https://img.shields.io/badge/made_in-ukraine-ffd700.svg?labelColor=0057b7)](https://tyrrrz.me/ukraine)
 [![Build](https://img.shields.io/github/actions/workflow/status/Tyrrrz/DiscordChatExporter/main.yml?branch=master)](https://github.com/Tyrrrz/DiscordChatExporter/actions)

@@ -10,3 +10,7 @@ obj/
 
 # Test results
 TestResults/
+
+# Additional
+tmp
+.env
