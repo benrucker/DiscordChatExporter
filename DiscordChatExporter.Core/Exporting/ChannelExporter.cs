@@ -31,8 +31,6 @@ public class ChannelExporter(DiscordClient discord)
         var context = new ExportContext(discord, request);
         await context.PopulateChannelsAndRolesAsync(cancellationToken);
 
-        // Initialize the exporter before further checks to ensure the file is created even if
-        // an exception is thrown after this point.
         await using var messageExporter = new MessageExporter(context);
 
         // Check if the channel is empty
@@ -41,7 +39,7 @@ public class ChannelExporter(DiscordClient discord)
             throw new ChannelEmptyException(
                 $"Channel '{request.Channel.Name}' "
                     + $"of guild '{request.Guild.Name}' "
-                    + $"does not contain any messages; an empty file will be created."
+                    + $"does not contain any messages."
             );
         }
 
@@ -60,7 +58,7 @@ public class ChannelExporter(DiscordClient discord)
             throw new ChannelEmptyException(
                 $"Channel '{request.Channel.Name}' "
                     + $"of guild '{request.Guild.Name}' "
-                    + $"does not contain any messages within the specified period; an empty file will be created."
+                    + $"does not contain any messages within the specified period."
             );
         }
 

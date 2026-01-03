@@ -72,10 +72,6 @@ internal partial class MessageExporter(ExportContext context) : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        // If not messages were written, force the creation of an empty file
-        if (MessagesExported <= 0)
-            _ = await InitializeWriterAsync();
-
         await UninitializeWriterAsync();
     }
 }
