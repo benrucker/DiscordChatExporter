@@ -278,7 +278,8 @@ public partial class DashboardViewModel : ViewModelBase
                             dialog.ShouldReuseAssets,
                             dialog.ShouldUseNewMediaFilePaths,
                             _settingsService.Locale,
-                            _settingsService.IsUtcNormalizationEnabled
+                            _settingsService.IsUtcNormalizationEnabled,
+                            shouldNormalizeJson: false
                         );
 
                         await exporter.ExportChannelAsync(request, progress, cancellationToken);

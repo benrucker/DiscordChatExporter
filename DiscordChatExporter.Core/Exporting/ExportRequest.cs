@@ -47,6 +47,8 @@ public partial class ExportRequest
 
     public bool IsUtcNormalizationEnabled { get; }
 
+    public bool ShouldNormalizeJson { get; }
+
     public ExportRequest(
         Guild guild,
         Channel channel,
@@ -62,7 +64,8 @@ public partial class ExportRequest
         bool shouldReuseAssets,
         bool shouldUseNewMediaFilePaths,
         string? locale,
-        bool isUtcNormalizationEnabled
+        bool isUtcNormalizationEnabled,
+        bool shouldNormalizeJson
     )
     {
         Guild = guild;
@@ -78,6 +81,7 @@ public partial class ExportRequest
         ShouldUseNewMediaFilePaths = shouldUseNewMediaFilePaths;
         Locale = locale;
         IsUtcNormalizationEnabled = isUtcNormalizationEnabled;
+        ShouldNormalizeJson = shouldNormalizeJson;
 
         OutputFilePath = GetOutputBaseFilePath(Guild, Channel, outputPath, Format, After, Before);
 

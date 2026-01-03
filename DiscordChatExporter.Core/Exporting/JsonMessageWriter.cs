@@ -30,6 +30,12 @@ internal class JsonMessageWriter(Stream stream, ExportContext context)
         }
     );
 
+    private readonly NormalizedJsonAuxiliaryWriter? _auxiliaryWriter = context
+        .Request
+        .ShouldNormalizeJson
+        ? new NormalizedJsonAuxiliaryWriter(context)
+        : null;
+
     private async ValueTask<string> FormatMarkdownAsync(
         string markdown,
         CancellationToken cancellationToken = default
@@ -430,8 +436,16 @@ internal class JsonMessageWriter(Stream stream, ExportContext context)
         }
 
         // Author
-        _writer.WritePropertyName("author");
-        await WriteUserAsync(message.Author, true, cancellationToken);
+        if (_auxiliaryWriter is not null)
+        {
+            _writer.WriteString("authorId", message.Author.Id.ToString());
+            _auxiliaryWriter.TrackUser(message.Author);
+        }
+        else
+        {
+            _writer.WritePropertyName("author");
+            await WriteUserAsync(message.Author, true, cancellationToken);
+        }
 
         // Attachments
         _writer.WriteStartArray("attachments");
@@ -495,21 +509,43 @@ internal class JsonMessageWriter(Stream stream, ExportContext context)
             _writer.WriteNumber("count", reaction.Count);
 
             // Reaction authors
-            _writer.WriteStartArray("users");
-
-            await foreach (
-                var user in Context.Discord.GetMessageReactionsAsync(
-                    Context.Request.Channel.Id,
-                    message.Id,
-                    reaction.Emoji,
-                    cancellationToken
-                )
-            )
+            if (_auxiliaryWriter is not null)
             {
-                await WriteUserAsync(user, false, cancellationToken);
-            }
+                _writer.WriteStartArray("userIds");
 
-            _writer.WriteEndArray();
+                await foreach (
+                    var user in Context.Discord.GetMessageReactionsAsync(
+                        Context.Request.Channel.Id,
+                        message.Id,
+                        reaction.Emoji,
+                        cancellationToken
+                    )
+                )
+                {
+                    _writer.WriteStringValue(user.Id.ToString());
+                    _auxiliaryWriter.TrackUser(user);
+                }
+
+                _writer.WriteEndArray();
+            }
+            else
+            {
+                _writer.WriteStartArray("users");
+
+                await foreach (
+                    var user in Context.Discord.GetMessageReactionsAsync(
+                        Context.Request.Channel.Id,
+                        message.Id,
+                        reaction.Emoji,
+                        cancellationToken
+                    )
+                )
+                {
+                    await WriteUserAsync(user, false, cancellationToken);
+                }
+
+                _writer.WriteEndArray();
+            }
 
             _writer.WriteEndObject();
         }
@@ -517,11 +553,23 @@ internal class JsonMessageWriter(Stream stream, ExportContext context)
         _writer.WriteEndArray();
 
         // Mentions
-        _writer.WriteStartArray("mentions");
-        foreach (var user in message.MentionedUsers)
-            await WriteUserAsync(user, true, cancellationToken);
-
-        _writer.WriteEndArray();
+        if (_auxiliaryWriter is not null)
+        {
+            _writer.WriteStartArray("mentionIds");
+            foreach (var user in message.MentionedUsers)
+            {
+                _writer.WriteStringValue(user.Id.ToString());
+                _auxiliaryWriter.TrackUser(user);
+            }
+            _writer.WriteEndArray();
+        }
+        else
+        {
+            _writer.WriteStartArray("mentions");
+            foreach (var user in message.MentionedUsers)
+                await WriteUserAsync(user, true, cancellationToken);
+            _writer.WriteEndArray();
+        }
 
         // Message reference
         if (message.Reference is not null)
@@ -541,8 +589,16 @@ internal class JsonMessageWriter(Stream stream, ExportContext context)
             _writer.WriteString("id", message.Interaction.Id.ToString());
             _writer.WriteString("name", message.Interaction.Name);
 
-            _writer.WritePropertyName("user");
-            await WriteUserAsync(message.Interaction.User, true, cancellationToken);
+            if (_auxiliaryWriter is not null)
+            {
+                _writer.WriteString("userId", message.Interaction.User.Id.ToString());
+                _auxiliaryWriter.TrackUser(message.Interaction.User);
+            }
+            else
+            {
+                _writer.WritePropertyName("user");
+                await WriteUserAsync(message.Interaction.User, true, cancellationToken);
+            }
 
             _writer.WriteEndObject();
         }
@@ -585,6 +641,10 @@ internal class JsonMessageWriter(Stream stream, ExportContext context)
     public override async ValueTask DisposeAsync()
     {
         await _writer.DisposeAsync();
+
+        if (_auxiliaryWriter is not null)
+            await _auxiliaryWriter.DisposeAsync();
+
         await base.DisposeAsync();
     }
 }

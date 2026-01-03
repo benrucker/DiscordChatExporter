@@ -139,6 +139,14 @@ public abstract class ExportCommandBase : DiscordCommandBase
     public bool IsUtcNormalizationEnabled { get; init; } = false;
 
     [CommandOption(
+        "normalize-json",
+        Description = "Normalize JSON output by extracting users, members, and roles to separate files. "
+            + "Messages will reference entities by ID only. "
+            + "Only applies to JSON export format."
+    )]
+    public bool ShouldNormalizeJson { get; init; } = false;
+
+    [CommandOption(
         "fuck-russia",
         EnvironmentVariable = "FUCK_RUSSIA",
         Description = "Don't print the Support Ukraine message to the console.",
@@ -171,6 +179,14 @@ public abstract class ExportCommandBase : DiscordCommandBase
         if (!string.IsNullOrWhiteSpace(AssetsDirPath) && !ShouldDownloadAssets)
         {
             throw new CommandException("Option --media-dir cannot be used without --media.");
+        }
+
+        // Normalize JSON can only be enabled for JSON export format
+        if (ShouldNormalizeJson && ExportFormat != ExportFormat.Json)
+        {
+            throw new CommandException(
+                "Option --normalize-json can only be used with JSON export format."
+            );
         }
 
         var unwrappedChannels = new List<Channel>(channels);
@@ -285,7 +301,8 @@ public abstract class ExportCommandBase : DiscordCommandBase
                                         ShouldReuseAssets,
                                         ShouldUseNewMediaFilePaths,
                                         Locale,
-                                        IsUtcNormalizationEnabled
+                                        IsUtcNormalizationEnabled,
+                                        ShouldNormalizeJson
                                     );
 
                                     await Exporter.ExportChannelAsync(
