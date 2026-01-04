@@ -88,8 +88,7 @@ internal partial class ExportAssetDownloader
         // If this isn't a Discord CDN URL, save the file to the `media/external` folder.
         if (!string.Equals(uri.Host, "cdn.discordapp.com", StringComparison.OrdinalIgnoreCase))
         {
-            File.AppendAllTextAsync("external_urls.txt", $"{url}\n");
-            return $"external/{uri.Host}{uri.AbsolutePath}";
+            return GetExternalFilePath(uri);
         }
 
         // If it is a Discord URL, we're guaranteed to have matches for these groups. <see cref="ImageCdn"/>
@@ -102,6 +101,52 @@ internal partial class ExportAssetDownloader
         var sizePathSegment = sizeParam != null ? $"{sizeParam}px/" : "";
 
         return $"{path}/{sizePathSegment}{Path.EscapeFileName(fileName)}";
+    }
+
+    private static string GetExternalFilePath(Uri uri)
+    {
+        // Handle Discord external proxy URLs (e.g., images-ext-1.discordapp.net/external/...)
+        // These URLs proxy external content and have the form:
+        // https://images-ext-1.discordapp.net/external/{hash}/{original_url_without_scheme}
+        if (
+            uri.Host.EndsWith(".discordapp.net", StringComparison.OrdinalIgnoreCase)
+            && uri.AbsolutePath.StartsWith("/external/", StringComparison.OrdinalIgnoreCase)
+        )
+        {
+            // Extract path after /external/ and use it directly
+            var externalPath = uri.AbsolutePath["/external/".Length..];
+            return $"external/{SanitizePath(externalPath)}";
+        }
+
+        // Handle twemoji URLs from jsdelivr CDN
+        // These have the form: https://cdn.jsdelivr.net/gh/twitter/twemoji@latest/assets/svg/{emoji}.svg
+        if (
+            string.Equals(uri.Host, "cdn.jsdelivr.net", StringComparison.OrdinalIgnoreCase)
+            && uri.AbsolutePath.Contains("/twemoji", StringComparison.OrdinalIgnoreCase)
+        )
+        {
+            var fileName = System.IO.Path.GetFileName(uri.AbsolutePath);
+            return $"twemoji/{Path.EscapeFileName(fileName)}";
+        }
+
+        // For other external URLs, use a condensed path structure
+        return $"external/{SanitizePath(uri.Host + uri.AbsolutePath)}";
+    }
+
+    private static string SanitizePath(string path)
+    {
+        // Split the path into segments, sanitize each segment, and rejoin
+        var segments = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        var sanitizedSegments = new List<string>();
+
+        foreach (var segment in segments)
+        {
+            var sanitized = Path.EscapeFileName(segment);
+            if (!string.IsNullOrWhiteSpace(sanitized))
+                sanitizedSegments.Add(sanitized);
+        }
+
+        return string.Join("/", sanitizedSegments);
     }
 }
 
