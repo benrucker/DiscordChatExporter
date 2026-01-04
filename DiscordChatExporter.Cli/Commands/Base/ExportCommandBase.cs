@@ -289,10 +289,31 @@ public abstract class ExportCommandBase : DiscordCommandBase
             );
         }
 
+        // Filter out empty channels before starting the progress ticker
+        var channelsToExport = new List<Channel>();
+        foreach (var channel in unwrappedChannels)
+        {
+            if (
+                channel.IsEmpty
+                || (Before is not null && !channel.MayHaveMessagesBefore(Before.Value))
+                || (After is not null && !channel.MayHaveMessagesAfter(After.Value))
+            )
+            {
+                using (console.WithForegroundColor(ConsoleColor.DarkGray))
+                    await console.Output.WriteLineAsync(
+                        $"Skipping {channel.GetHierarchicalName()}"
+                    );
+            }
+            else
+            {
+                channelsToExport.Add(channel);
+            }
+        }
+
         // Export
         var errorsByChannel = new ConcurrentDictionary<Channel, string>();
 
-        await console.Output.WriteLineAsync($"Exporting {unwrappedChannels.Count} channel(s)...");
+        await console.Output.WriteLineAsync($"Exporting {channelsToExport.Count} channel(s)...");
         await console
             .CreateProgressTicker()
             .HideCompleted(
@@ -304,7 +325,7 @@ public abstract class ExportCommandBase : DiscordCommandBase
             .StartAsync(async ctx =>
             {
                 await Parallel.ForEachAsync(
-                    unwrappedChannels,
+                    channelsToExport,
                     new ParallelOptions
                     {
                         MaxDegreeOfParallelism = Math.Max(1, ParallelLimit),
@@ -380,10 +401,11 @@ public abstract class ExportCommandBase : DiscordCommandBase
             });
 
         // Print the result
+        var exportedCount = channelsToExport.Count - errorsByChannel.Count;
         using (console.WithForegroundColor(ConsoleColor.White))
         {
             await console.Output.WriteLineAsync(
-                $"Successfully exported {unwrappedChannels.Count - errorsByChannel.Count} channel(s)."
+                $"Successfully exported {exportedCount} channel(s)."
             );
         }
 
@@ -409,7 +431,7 @@ public abstract class ExportCommandBase : DiscordCommandBase
 
         // Fail the command only if ALL channels failed to export.
         // If only some channels failed to export, it's okay.
-        if (errorsByChannel.Count >= unwrappedChannels.Count)
+        if (exportedCount <= 0 && errorsByChannel.Any())
             throw new CommandException("Export failed.");
     }
 
