@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
@@ -312,6 +313,7 @@ public abstract class ExportCommandBase : DiscordCommandBase
 
         // Export
         var errorsByChannel = new ConcurrentDictionary<Channel, string>();
+        var overallStopwatch = Stopwatch.StartNew();
 
         await console.Output.WriteLineAsync($"Exporting {channelsToExport.Count} channel(s)...");
         await console
@@ -400,12 +402,16 @@ public abstract class ExportCommandBase : DiscordCommandBase
                 );
             });
 
+        // Stop overall timing
+        overallStopwatch.Stop();
+        var totalDuration = overallStopwatch.Elapsed;
+
         // Print the result
         var exportedCount = channelsToExport.Count - errorsByChannel.Count;
         using (console.WithForegroundColor(ConsoleColor.White))
         {
             await console.Output.WriteLineAsync(
-                $"Successfully exported {exportedCount} channel(s)."
+                $"Successfully exported {exportedCount} channel(s) in {FormatDuration(totalDuration)}."
             );
         }
 
@@ -433,6 +439,17 @@ public abstract class ExportCommandBase : DiscordCommandBase
         // If only some channels failed to export, it's okay.
         if (exportedCount <= 0 && errorsByChannel.Any())
             throw new CommandException("Export failed.");
+    }
+
+    private static string FormatDuration(TimeSpan duration)
+    {
+        if (duration.TotalHours >= 1)
+            return $"{(int)duration.TotalHours}h {duration.Minutes}m {duration.Seconds}s";
+        if (duration.TotalMinutes >= 1)
+            return $"{(int)duration.TotalMinutes}m {duration.Seconds}s";
+        if (duration.TotalSeconds >= 1)
+            return $"{duration.TotalSeconds:F1}s";
+        return $"{duration.TotalMilliseconds:F0}ms";
     }
 
     public override async ValueTask ExecuteAsync(IConsole console)

@@ -34,11 +34,12 @@ internal static class ConsoleExtensions
                     new TaskDescriptionColumn { Alignment = Justify.Left },
                     new ProgressBarColumn(),
                     new PercentageColumn(),
+                    new ElapsedTimeColumn(),
                     new StatusColumn()
                 );
     }
 
-    public static async ValueTask StartTaskAsync(
+    public static async ValueTask<TimeSpan> StartTaskAsync(
         this ProgressContext context,
         string description,
         Func<ProgressTask, ValueTask> performOperationAsync
@@ -53,6 +54,9 @@ internal static class ConsoleExtensions
             new ProgressTaskSettings { MaxValue = 1 }
         );
 
+        // Start timing for this task
+        ElapsedTimeColumn.StartTiming(progressTask);
+
         try
         {
             await performOperationAsync(progressTask);
@@ -62,5 +66,8 @@ internal static class ConsoleExtensions
             progressTask.Value = progressTask.MaxValue;
             progressTask.StopTask();
         }
+
+        // Stop timing and return elapsed time
+        return ElapsedTimeColumn.StopTiming(progressTask);
     }
 }
