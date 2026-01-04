@@ -107,14 +107,25 @@ internal partial class ExportAssetDownloader
     {
         // Handle Discord external proxy URLs (e.g., images-ext-1.discordapp.net/external/...)
         // These URLs proxy external content and have the form:
-        // https://images-ext-1.discordapp.net/external/{hash}/{original_url_without_scheme}
+        // https://images-ext-1.discordapp.net/external/{hash}/{protocol}/{original_url}
+        // We strip the hash and protocol to get just the original URL path
         if (
             uri.Host.EndsWith(".discordapp.net", StringComparison.OrdinalIgnoreCase)
             && uri.AbsolutePath.StartsWith("/external/", StringComparison.OrdinalIgnoreCase)
         )
         {
-            // Extract path after /external/ and use it directly
+            // Extract path after /external/, skip the hash and protocol segments
             var externalPath = uri.AbsolutePath["/external/".Length..];
+            var segments = externalPath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+
+            // Skip first segment (hash) and second segment (https/http)
+            if (segments.Length > 2)
+            {
+                var originalUrl = string.Join("/", segments[2..]);
+                return $"external/{SanitizePath(originalUrl)}";
+            }
+
+            // Fallback if URL structure is unexpected
             return $"external/{SanitizePath(externalPath)}";
         }
 
