@@ -1,8 +1,15 @@
 name: Build
 
 on:
+  workflow_dispatch:
+  push:
+    branches:
+      - master
+    tags:
+      - "*"
   pull_request:
-    branches: ['**']
+    branches:
+      - master
 
 jobs:
   build:
@@ -14,7 +21,7 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '10.0.x'
+          dotnet-version: "10.0.x"
 
       - name: Build
         run: dotnet build -p:CSharpier_Bypass=true
