@@ -39,7 +39,7 @@ public partial class ExportRequest
 
     public bool ShouldReuseAssets { get; }
 
-    public bool ShouldUseNewMediaFilePaths { get; }
+    public bool ShouldUseNestedMediaFilePaths { get; }
 
     public string? Locale { get; }
 
@@ -62,7 +62,7 @@ public partial class ExportRequest
         bool shouldFormatMarkdown,
         bool shouldDownloadAssets,
         bool shouldReuseAssets,
-        bool shouldUseNewMediaFilePaths,
+        bool shouldUseNestedMediaFilePaths,
         string? locale,
         bool isUtcNormalizationEnabled,
         bool shouldNormalizeJson
@@ -78,7 +78,7 @@ public partial class ExportRequest
         ShouldFormatMarkdown = shouldFormatMarkdown;
         ShouldDownloadAssets = shouldDownloadAssets;
         ShouldReuseAssets = shouldReuseAssets;
-        ShouldUseNewMediaFilePaths = shouldUseNewMediaFilePaths;
+        ShouldUseNestedMediaFilePaths = shouldUseNestedMediaFilePaths;
         Locale = locale;
         IsUtcNormalizationEnabled = isUtcNormalizationEnabled;
         ShouldNormalizeJson = shouldNormalizeJson;

@@ -100,16 +100,16 @@ public abstract class ExportCommandBase : DiscordCommandBase
 
     [CommandOption(
         "reuse-media",
-        Description = "Reuse previously downloaded assets to avoid redundant requests."
+        Description = "Reuse previously downloaded assets to avoid redundant requests. "
+            + "Keep --media-nested consistent across runs for best results."
     )]
     public bool ShouldReuseAssets { get; init; } = false;
 
     [CommandOption(
-        "new-media-paths",
-        Description = "Saves media with a new file naming convention to prevent collisions. "
-            + "Duplicate media may be downloaded if consecutive runs use different values for this flag."
+        "media-nested",
+        Description = "Saves assets with a nested file naming convention, creating subdirectories for each distinct asset type."
     )]
-    public bool ShouldUseNewMediaFilePaths { get; init; } = false;
+    public bool ShouldUseNestedMediaFilePaths { get; init; } = false;
 
     [CommandOption(
         "media-dir",
@@ -173,9 +173,9 @@ public abstract class ExportCommandBase : DiscordCommandBase
         }
 
         // New media file path can only be enabled if the download assets option is set
-        if (ShouldUseNewMediaFilePaths && !ShouldDownloadAssets)
+        if (ShouldUseNestedMediaFilePaths && !ShouldDownloadAssets)
         {
-            throw new CommandException("Option --new-media-paths cannot be used without --media.");
+            throw new CommandException("Option --media-nested cannot be used without --media.");
         }
 
         // Assets directory can only be specified if the download assets option is set
@@ -370,7 +370,7 @@ public abstract class ExportCommandBase : DiscordCommandBase
                                         ShouldFormatMarkdown,
                                         ShouldDownloadAssets,
                                         ShouldReuseAssets,
-                                        ShouldUseNewMediaFilePaths,
+                                        ShouldUseNestedMediaFilePaths,
                                         Locale,
                                         IsUtcNormalizationEnabled,
                                         ShouldNormalizeJson
