@@ -108,7 +108,9 @@ internal partial class ExportAssetDownloader
             : $"_{queryParamsString}";
         var fullFilename = $"{fileNameWithoutExtension}{queryParamsSuffix}{fileExtension}";
 
-        return $"{path}/{Path.EscapeFileName(fullFilename)}";
+        // Replace forward slashes from URL with platform-specific separator
+        var normalizedPath = path.Replace('/', Path.DirectorySeparatorChar);
+        return Path.Combine(normalizedPath, Path.EscapeFileName(fullFilename));
     }
 
     // Remove signature parameters from Discord CDN URLs to normalize them
@@ -162,11 +164,11 @@ internal partial class ExportAssetDownloader
             if (segments.Length > 2)
             {
                 var originalUrl = string.Join("/", segments[2..]);
-                return $"external/{SanitizePath(originalUrl)}";
+                return Path.Combine("external", SanitizePath(originalUrl));
             }
 
             // Fallback if URL structure is unexpected
-            return $"external/{SanitizePath(externalPath)}";
+            return Path.Combine("external", SanitizePath(externalPath));
         }
 
         // Handle twemoji URLs from jsdelivr CDN
@@ -176,12 +178,12 @@ internal partial class ExportAssetDownloader
             && uri.AbsolutePath.Contains("/twemoji", StringComparison.OrdinalIgnoreCase)
         )
         {
-            var fileName = System.IO.Path.GetFileName(uri.AbsolutePath);
-            return $"twemoji/{Path.EscapeFileName(fileName)}";
+            var fileName = Path.GetFileName(uri.AbsolutePath);
+            return Path.Combine("twemoji", Path.EscapeFileName(fileName));
         }
 
         // For other external URLs, use a condensed path structure
-        return $"external/{SanitizePath(uri.Host + uri.AbsolutePath)}";
+        return Path.Combine("external", SanitizePath(uri.Host + uri.AbsolutePath));
     }
 
     private static string SanitizePath(string path)
@@ -197,7 +199,7 @@ internal partial class ExportAssetDownloader
                 sanitizedSegments.Add(sanitized);
         }
 
-        return string.Join("/", sanitizedSegments);
+        return string.Join(Path.DirectorySeparatorChar.ToString(), sanitizedSegments);
     }
 }
 
