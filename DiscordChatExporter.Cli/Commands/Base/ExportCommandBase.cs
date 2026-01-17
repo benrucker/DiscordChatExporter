@@ -81,6 +81,13 @@ public abstract class ExportCommandBase : DiscordCommandBase
     public MessageFilter MessageFilter { get; init; } = MessageFilter.Null;
 
     [CommandOption(
+        "first-day-of-month",
+        Description = "When used with --after and --before, exports only the first day of each month "
+            + "within the specified range. Each month produces a separate output file."
+    )]
+    public bool IsFirstDayOfMonthMode { get; init; } = false;
+
+    [CommandOption(
         "parallel",
         Description = "Limits how many channels can be exported in parallel."
     )]
@@ -192,6 +199,28 @@ public abstract class ExportCommandBase : DiscordCommandBase
             );
         }
 
+        // First day of month mode requires both --after and --before
+        if (IsFirstDayOfMonthMode && (After is null || Before is null))
+        {
+            throw new CommandException(
+                "Option --first-day-of-month requires both --after and --before to be specified."
+            );
+        }
+
+        // Calculate date periods for first-day-of-month mode
+        var datePeriods =
+            IsFirstDayOfMonthMode && After is not null && Before is not null
+                ? DateRangeHelper.GetFirstDayOfMonthRanges(After.Value, Before.Value)
+                : null;
+
+        // Validate that at least one period exists in first-day-of-month mode
+        if (IsFirstDayOfMonthMode && (datePeriods is null || datePeriods.Count == 0))
+        {
+            throw new CommandException(
+                "No valid first-day-of-month periods found within the specified date range."
+            );
+        }
+
         var unwrappedChannels = new List<Channel>(channels);
 
         // Unwrap threads
@@ -268,13 +297,17 @@ public abstract class ExportCommandBase : DiscordCommandBase
                 );
         }
 
-        // Make sure the user does not try to export multiple channels into one file.
+        // Make sure the user does not try to export multiple items into one file.
         // Output path must either be a directory or contain template tokens for this to work.
         // https://github.com/Tyrrrz/DiscordChatExporter/issues/799
         // https://github.com/Tyrrrz/DiscordChatExporter/issues/917
+        var willExportMultipleItems =
+            unwrappedChannels.Count > 1
+            || (IsFirstDayOfMonthMode && datePeriods is not null && datePeriods.Count > 1);
+
         var isValidOutputPath =
-            // Anything is valid when exporting a single channel
-            unwrappedChannels.Count <= 1
+            // Anything is valid when exporting a single item
+            !willExportMultipleItems
             // When using template tokens, assume the user knows what they're doing
             || OutputPath.Contains('%')
             // Otherwise, require an existing directory or an unambiguous directory path
@@ -284,38 +317,84 @@ public abstract class ExportCommandBase : DiscordCommandBase
         if (!isValidOutputPath)
         {
             throw new CommandException(
-                "Attempted to export multiple channels, but the output path is neither a directory nor a template. "
+                "Attempted to export multiple items, but the output path is neither a directory nor a template. "
                     + "If the provided output path is meant to be treated as a directory, make sure it ends with a slash. "
                     + $"Provided output path: '{OutputPath}'."
             );
         }
 
-        // Filter out empty channels before starting the progress ticker
-        var channelsToExport = new List<Channel>();
-        foreach (var channel in unwrappedChannels)
+        // Build export items (channel + date range pairs)
+        // In first-day-of-month mode, each channel is exported multiple times with different date ranges
+        var exportItems =
+            new List<(Channel Channel, Snowflake? After, Snowflake? Before, string Label)>();
+
+        if (datePeriods is not null)
         {
-            if (
-                channel.IsEmpty
-                || (Before is not null && !channel.MayHaveMessagesBefore(Before.Value))
-                || (After is not null && !channel.MayHaveMessagesAfter(After.Value))
-            )
+            // First-day-of-month mode: create an export item for each channel + period combination
+            await console.Output.WriteLineAsync(
+                $"First-day-of-month mode: exporting {datePeriods.Count} period(s)."
+            );
+
+            foreach (var (periodAfter, periodBefore) in datePeriods)
             {
-                using (console.WithForegroundColor(ConsoleColor.DarkGray))
-                    await console.Output.WriteLineAsync(
-                        $"Skipping {channel.GetHierarchicalName()}"
-                    );
+                // Use UTC to match the export filename format
+                var periodLabel = periodAfter.ToDate().ToUniversalTime().ToString("yyyy-MM-dd");
+
+                foreach (var channel in unwrappedChannels)
+                {
+                    if (
+                        channel.IsEmpty
+                        || !channel.MayHaveMessagesBefore(periodBefore)
+                        || !channel.MayHaveMessagesAfter(periodAfter)
+                    )
+                    {
+                        using (console.WithForegroundColor(ConsoleColor.DarkGray))
+                            await console.Output.WriteLineAsync(
+                                $"Skipping {channel.GetHierarchicalName()} for {periodLabel}"
+                            );
+                    }
+                    else
+                    {
+                        exportItems.Add(
+                            (
+                                channel,
+                                periodAfter,
+                                periodBefore,
+                                $"{channel.GetHierarchicalName()} ({periodLabel})"
+                            )
+                        );
+                    }
+                }
             }
-            else
+        }
+        else
+        {
+            // Normal mode: filter channels and create export items with the original date range
+            foreach (var channel in unwrappedChannels)
             {
-                channelsToExport.Add(channel);
+                if (
+                    channel.IsEmpty
+                    || (Before is not null && !channel.MayHaveMessagesBefore(Before.Value))
+                    || (After is not null && !channel.MayHaveMessagesAfter(After.Value))
+                )
+                {
+                    using (console.WithForegroundColor(ConsoleColor.DarkGray))
+                        await console.Output.WriteLineAsync(
+                            $"Skipping {channel.GetHierarchicalName()}"
+                        );
+                }
+                else
+                {
+                    exportItems.Add((channel, After, Before, channel.GetHierarchicalName()));
+                }
             }
         }
 
         // Export
-        var errorsByChannel = new ConcurrentDictionary<Channel, string>();
+        var errorsByExportItem = new ConcurrentDictionary<string, string>();
         var overallStopwatch = Stopwatch.StartNew();
 
-        await console.Output.WriteLineAsync($"Exporting {channelsToExport.Count} channel(s)...");
+        await console.Output.WriteLineAsync($"Exporting {exportItems.Count} item(s)...");
         await console
             .CreateProgressTicker()
             .HideCompleted(
@@ -327,18 +406,19 @@ public abstract class ExportCommandBase : DiscordCommandBase
             .StartAsync(async ctx =>
             {
                 await Parallel.ForEachAsync(
-                    channelsToExport,
+                    exportItems,
                     new ParallelOptions
                     {
                         MaxDegreeOfParallelism = Math.Max(1, ParallelLimit),
                         CancellationToken = cancellationToken,
                     },
-                    async (channel, innerCancellationToken) =>
+                    async (exportItem, innerCancellationToken) =>
                     {
+                        var (channel, itemAfter, itemBefore, label) = exportItem;
                         try
                         {
                             await ctx.StartTaskAsync(
-                                Markup.Escape(channel.GetHierarchicalName()),
+                                Markup.Escape(label),
                                 async progress =>
                                 {
                                     // Set up scoped logger for this task (if verbose)
@@ -363,8 +443,8 @@ public abstract class ExportCommandBase : DiscordCommandBase
                                         OutputPath,
                                         AssetsDirPath,
                                         ExportFormat,
-                                        After,
-                                        Before,
+                                        itemAfter,
+                                        itemBefore,
                                         PartitionLimit,
                                         MessageFilter,
                                         ShouldFormatMarkdown,
@@ -396,7 +476,7 @@ public abstract class ExportCommandBase : DiscordCommandBase
                         }
                         catch (DiscordChatExporterException ex) when (!ex.IsFatal)
                         {
-                            errorsByChannel[channel] = ex.Message;
+                            errorsByExportItem[label] = ex.Message;
                         }
                     }
                 );
@@ -407,27 +487,27 @@ public abstract class ExportCommandBase : DiscordCommandBase
         var totalDuration = overallStopwatch.Elapsed;
 
         // Print the result
-        var exportedCount = channelsToExport.Count - errorsByChannel.Count;
+        var exportedCount = exportItems.Count - errorsByExportItem.Count;
         using (console.WithForegroundColor(ConsoleColor.White))
         {
             await console.Output.WriteLineAsync(
-                $"Successfully exported {exportedCount} channel(s) in {FormatDuration(totalDuration)}."
+                $"Successfully exported {exportedCount} item(s) in {FormatDuration(totalDuration)}."
             );
         }
 
         // Print errors
-        if (errorsByChannel.Any())
+        if (errorsByExportItem.Any())
         {
             await console.Output.WriteLineAsync();
 
             using (console.WithForegroundColor(ConsoleColor.Red))
             {
-                await console.Error.WriteLineAsync("Failed to export the following channel(s):");
+                await console.Error.WriteLineAsync("Failed to export the following item(s):");
             }
 
-            foreach (var (channel, message) in errorsByChannel)
+            foreach (var (label, message) in errorsByExportItem)
             {
-                await console.Error.WriteAsync($"{channel.GetHierarchicalName()}: ");
+                await console.Error.WriteAsync($"{label}: ");
                 using (console.WithForegroundColor(ConsoleColor.Red))
                     await console.Error.WriteLineAsync(message);
             }
@@ -435,9 +515,9 @@ public abstract class ExportCommandBase : DiscordCommandBase
             await console.Error.WriteLineAsync();
         }
 
-        // Fail the command only if ALL channels failed to export.
-        // If only some channels failed to export, it's okay.
-        if (exportedCount <= 0 && errorsByChannel.Any())
+        // Fail the command only if ALL items failed to export.
+        // If only some items failed to export, it's okay.
+        if (exportedCount <= 0 && errorsByExportItem.Any())
             throw new CommandException("Export failed.");
     }
 

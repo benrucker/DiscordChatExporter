@@ -132,18 +132,18 @@ public partial class ExportRequest
             if (after is not null && before is not null)
             {
                 buffer.Append(
-                    $"{after.Value.ToDate():yyyy-MM-dd} to {before.Value.ToDate():yyyy-MM-dd}"
+                    $"{after.Value.ToDate().ToUniversalTime():yyyy-MM-dd} to {before.Value.ToDate().ToUniversalTime():yyyy-MM-dd}"
                 );
             }
             // Only 'after' is set
             else if (after is not null)
             {
-                buffer.Append($"after {after.Value.ToDate():yyyy-MM-dd}");
+                buffer.Append($"after {after.Value.ToDate().ToUniversalTime():yyyy-MM-dd}");
             }
             // Only 'before' is set
             else if (before is not null)
             {
-                buffer.Append($"before {before.Value.ToDate():yyyy-MM-dd}");
+                buffer.Append($"before {before.Value.ToDate().ToUniversalTime():yyyy-MM-dd}");
             }
 
             buffer.Append(')');
@@ -182,10 +182,14 @@ public partial class ExportRequest
                         "%P" => channel.Parent?.Position?.ToString(CultureInfo.InvariantCulture)
                             ?? "0",
 
-                        "%a" => after?.ToDate().ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
+                        "%a" => after
+                            ?.ToDate()
+                            .ToUniversalTime()
+                            .ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
                             ?? "",
                         "%b" => before
                             ?.ToDate()
+                            .ToUniversalTime()
                             .ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
                             ?? "",
                         "%d" => DateTimeOffset.Now.ToString(
