@@ -14,3 +14,5 @@ TestResults/
 # Additional
 tmp
 .env
+
+.claude/*.local.*
