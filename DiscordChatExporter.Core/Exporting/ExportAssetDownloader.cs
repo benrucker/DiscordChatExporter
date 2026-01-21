@@ -81,36 +81,90 @@ internal partial class ExportAssetDownloader
     {
         var uri = new Uri(NormalizeUrl(url));
 
-        // Try to extract the file name from URL
-        var pathAndFileName = Regex.Match(uri.AbsolutePath, @"/(.+)/([^?]*)");
-        var path = pathAndFileName.Groups[1].Value;
-        var fileName = pathAndFileName.Groups[2].Value;
-
-        // If this isn't a Discord CDN URL, save the file to the `media/external` folder.
+        // If this isn't a Discord CDN URL, save the file to the external folder.
         if (!string.Equals(uri.Host, "cdn.discordapp.com", StringComparison.OrdinalIgnoreCase))
         {
             return GetExternalFilePath(uri);
         }
 
-        // If it is a Discord URL, we should have matches for both of these. <see cref="ImageCdn"/>
-        // But if we encounter an unexpected Discord URL, just treat it like an external one.
-        if (string.IsNullOrWhiteSpace(path) || string.IsNullOrWhiteSpace(fileName))
+        var segments = uri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (segments.Length < 2)
         {
             return GetExternalFilePath(uri);
         }
 
-        var fileNameWithoutExtension = Path.GetFileNameWithoutExtension(fileName);
-        var queryParamsString = FormatQueryParamsForFilename(uri);
-        var fileExtension = Path.GetExtension(fileName);
+        var resourceType = segments[0];
+        string uniqueId;
+        string fileExtension;
 
-        var queryParamsSuffix = string.IsNullOrEmpty(queryParamsString)
-            ? ""
-            : $"_{queryParamsString}";
-        var fullFilename = $"{fileNameWithoutExtension}{queryParamsSuffix}{fileExtension}";
+        switch (resourceType)
+        {
+            // emojis/{emoji_id}.png
+            case "emojis":
+            // stickers/{sticker_id}.png
+            case "stickers":
+            {
+                // ID is the filename without extension
+                var fileName = segments[1];
+                uniqueId = Path.GetFileNameWithoutExtension(fileName);
+                fileExtension = Path.GetExtension(fileName);
+                break;
+            }
 
-        // Replace forward slashes from URL with platform-specific separator
-        var normalizedPath = path.Replace('/', Path.DirectorySeparatorChar);
-        return Path.Combine(normalizedPath, Path.EscapeFileName(fullFilename));
+            // attachments/{channel_id}/{attachment_id}/{filename}
+            case "attachments":
+            {
+                if (segments.Length < 4)
+                    return GetExternalFilePath(uri);
+                uniqueId = segments[2]; // attachment_id is globally unique
+                fileExtension = Path.GetExtension(segments[3]);
+                break;
+            }
+
+            // icons/{guild_id}/{guild_icon_hash}.png
+            case "icons":
+            {
+                if (segments.Length < 3)
+                    return GetExternalFilePath(uri);
+                var iconFileName = segments[2];
+                var iconHash = Path.GetFileNameWithoutExtension(iconFileName);
+                uniqueId = $"{segments[1]}_{iconHash}"; // guild_id + icon hash
+                fileExtension = Path.GetExtension(iconFileName);
+                break;
+            }
+
+            // guilds/{guild_id}/users/{user_id}/avatars/{member_avatar_hash}.png
+            case "guilds":
+            {
+                if (segments.Length < 6 || segments[2] != "users" || segments[4] != "avatars")
+                    return GetExternalFilePath(uri);
+                var avatarFileName = segments[5];
+                var avatarHash = Path.GetFileNameWithoutExtension(avatarFileName);
+                uniqueId = $"{segments[3]}_{avatarHash}"; // user_id + avatar hash
+                fileExtension = Path.GetExtension(avatarFileName);
+                resourceType = "avatars"; // Save under avatars/ instead of guilds/
+                break;
+            }
+
+            // Unrecognized Discord CDN URL - preserve original path structure
+            default:
+            {
+                var path = string.Join(
+                    Path.DirectorySeparatorChar.ToString(),
+                    segments[..^1].Select(Path.EscapeFileName)
+                );
+                var fileName = Path.EscapeFileName(segments[^1]);
+                return Path.Combine(path, fileName);
+            }
+        }
+
+        // If extension is suspiciously long (>10 chars), it's probably not a real extension
+        if (fileExtension.Length > 10)
+        {
+            fileExtension = "";
+        }
+
+        return Path.Combine(resourceType, $"{uniqueId}{fileExtension}");
     }
 
     // Remove signature parameters from Discord CDN URLs to normalize them
@@ -132,74 +186,35 @@ internal partial class ExportAssetDownloader
         return $"{uri.GetLeftPart(UriPartial.Path)}?{queryString}";
     }
 
-    // Stringifies the query params to be included in a filename.
-    // Returns a string like "size=256_spoiler=false"
-    private static string FormatQueryParamsForFilename(Uri uri)
-    {
-        var query = HttpUtility.ParseQueryString(uri.Query);
-        return string.Join(
-            "_",
-            query
-                .AllKeys.Where(key => !string.IsNullOrEmpty(key))
-                .Select(key => string.IsNullOrEmpty(query[key]) ? key : $"{key}-{query[key]}")
-        );
-    }
-
     private static string GetExternalFilePath(Uri uri)
     {
-        // Handle Discord external proxy URLs (e.g., images-ext-1.discordapp.net/external/...)
-        // These URLs proxy external content and have the form:
-        // https://images-ext-1.discordapp.net/external/{hash}/{protocol}/{original_url}
-        // We strip the hash and protocol to get just the original URL path
-        if (
-            uri.Host.EndsWith(".discordapp.net", StringComparison.OrdinalIgnoreCase)
-            && uri.AbsolutePath.StartsWith("/external/", StringComparison.OrdinalIgnoreCase)
-        )
+        // For external URLs, use full SHA256 hash of the URL to guarantee uniqueness.
+        // URLs can be up to 2000+ characters, far exceeding filesystem limits,
+        // so we hash them for safe storage while maintaining zero collision risk.
+
+        // Normalize the URL for hashing (remove volatile query params from Discord proxies)
+        var urlToHash = uri.ToString();
+
+        // Compute full SHA256 hash (64 hex chars) - no truncation to prevent collisions
+        var hash = SHA256
+            .HashData(Encoding.UTF8.GetBytes(urlToHash))
+            .Pipe(Convert.ToHexStringLower);
+
+        // Extract file extension from the URL path
+        var fileName = Path.GetFileName(uri.AbsolutePath);
+        var fileExtension = Path.GetExtension(fileName);
+
+        // If extension is suspiciously long (>10 chars), it's probably not a real extension
+        if (fileExtension.Length > 10)
         {
-            // Extract path after /external/, skip the hash and protocol segments
-            var externalPath = uri.AbsolutePath["/external/".Length..];
-            var segments = externalPath.Split('/', StringSplitOptions.RemoveEmptyEntries);
-
-            // Skip first segment (hash) and second segment (https/http)
-            if (segments.Length > 2)
-            {
-                var originalUrl = string.Join("/", segments[2..]);
-                return Path.Combine("external", SanitizePath(originalUrl));
-            }
-
-            // Fallback if URL structure is unexpected
-            return Path.Combine("external", SanitizePath(externalPath));
+            fileExtension = "";
         }
 
-        // Handle twemoji URLs from jsdelivr CDN
-        // These have the form: https://cdn.jsdelivr.net/gh/twitter/twemoji@latest/assets/svg/{emoji}.svg
-        if (
-            string.Equals(uri.Host, "cdn.jsdelivr.net", StringComparison.OrdinalIgnoreCase)
-            && uri.AbsolutePath.Contains("/twemoji", StringComparison.OrdinalIgnoreCase)
-        )
-        {
-            var fileName = Path.GetFileName(uri.AbsolutePath);
-            return Path.Combine("twemoji", Path.EscapeFileName(fileName));
-        }
+        // Sanitize domain for use as directory name
+        var domain = Path.EscapeFileName(uri.Host);
 
-        // For other external URLs, use a condensed path structure
-        return Path.Combine("external", SanitizePath(uri.Host + uri.AbsolutePath));
-    }
-
-    private static string SanitizePath(string path)
-    {
-        // Split the path into segments, sanitize each segment, and rejoin
-        var segments = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
-        var sanitizedSegments = new List<string>();
-
-        foreach (var segment in segments)
-        {
-            var sanitized = Path.EscapeFileName(segment);
-            if (!string.IsNullOrWhiteSpace(sanitized))
-                sanitizedSegments.Add(sanitized);
-        }
-
-        return string.Join(Path.DirectorySeparatorChar.ToString(), sanitizedSegments);
+        // Save as: external/{domain}/{full_sha256_hash}.{ext}
+        return Path.Combine("external", domain, $"{hash}{fileExtension}");
     }
 }
 
