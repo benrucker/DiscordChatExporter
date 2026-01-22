@@ -38,6 +38,12 @@ public abstract class DiscordCommandBase : ICommand
     [CommandOption("verbose", 'v', Description = "Show detailed status messages during export.")]
     public bool IsVerbose { get; init; } = false;
 
+    [CommandOption(
+        "stats",
+        Description = "Show API call statistics after export completes, including call counts and rate limit wait times."
+    )]
+    public bool ShowStats { get; init; } = false;
+
     [field: AllowNull, MaybeNull]
     protected DiscordClient Discord =>
         field ??= new DiscordClient(

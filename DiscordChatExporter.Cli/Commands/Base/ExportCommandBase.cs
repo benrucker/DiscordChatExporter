@@ -172,6 +172,12 @@ public abstract class ExportCommandBase : DiscordCommandBase
     {
         var cancellationToken = console.RegisterCancellationHandler();
 
+        // Set up API call statistics tracking if enabled
+        var apiStats = ShowStats ? new ApiCallStatistics() : null;
+        using var statsScope = apiStats is not null
+            ? ScopedApiCallStatistics.Begin(apiStats)
+            : null;
+
         // Asset reuse can only be enabled if the download assets option is set
         // https://github.com/Tyrrrz/DiscordChatExporter/issues/425
         if (ShouldReuseAssets && !ShouldDownloadAssets)
@@ -493,6 +499,13 @@ public abstract class ExportCommandBase : DiscordCommandBase
             await console.Output.WriteLineAsync(
                 $"Successfully exported {exportedCount} item(s) in {FormatDuration(totalDuration)}."
             );
+        }
+
+        // Print API statistics if enabled
+        if (apiStats is not null && apiStats.HasCalls)
+        {
+            await console.Output.WriteLineAsync();
+            await console.Output.WriteLineAsync(apiStats.GetSummary());
         }
 
         // Print errors
