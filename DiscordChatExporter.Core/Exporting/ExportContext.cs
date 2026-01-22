@@ -178,4 +178,17 @@ internal class ExportContext(
             return url;
         }
     }
+
+    public ValueTask<string> ResolveAttachmentUrlAsync(
+        string url,
+        bool isFromBot,
+        CancellationToken cancellationToken = default
+    )
+    {
+        // Skip downloading attachments from bot messages if the option is enabled
+        if (Request.ShouldSkipBotAttachments && isFromBot)
+            return ValueTask.FromResult(url);
+
+        return ResolveAssetUrlAsync(url, cancellationToken);
+    }
 }

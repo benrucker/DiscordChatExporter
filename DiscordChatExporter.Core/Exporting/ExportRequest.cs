@@ -41,6 +41,8 @@ public partial class ExportRequest
 
     public bool ShouldUseNestedMediaFilePaths { get; }
 
+    public bool ShouldSkipBotAttachments { get; }
+
     public string? Locale { get; }
 
     public CultureInfo? CultureInfo { get; }
@@ -63,6 +65,7 @@ public partial class ExportRequest
         bool shouldDownloadAssets,
         bool shouldReuseAssets,
         bool shouldUseNestedMediaFilePaths,
+        bool shouldSkipBotAttachments,
         string? locale,
         bool isUtcNormalizationEnabled,
         bool shouldNormalizeJson
@@ -79,6 +82,7 @@ public partial class ExportRequest
         ShouldDownloadAssets = shouldDownloadAssets;
         ShouldReuseAssets = shouldReuseAssets;
         ShouldUseNestedMediaFilePaths = shouldUseNestedMediaFilePaths;
+        ShouldSkipBotAttachments = shouldSkipBotAttachments;
         Locale = locale;
         IsUtcNormalizationEnabled = isUtcNormalizationEnabled;
         ShouldNormalizeJson = shouldNormalizeJson;

@@ -132,6 +132,13 @@ public abstract class ExportCommandBase : DiscordCommandBase
         init => field = value is not null ? Path.GetFullPath(value) : null;
     }
 
+    [CommandOption(
+        "skip-bot-attachments",
+        Description = "Skip downloading attachments from messages posted by bots. "
+            + "Avatars, emojis, and other assets are still downloaded."
+    )]
+    public bool ShouldSkipBotAttachments { get; init; } = false;
+
     [Obsolete("This option doesn't do anything. Kept for backwards compatibility.")]
     [CommandOption(
         "dateformat",
@@ -196,6 +203,14 @@ public abstract class ExportCommandBase : DiscordCommandBase
         if (!string.IsNullOrWhiteSpace(AssetsDirPath) && !ShouldDownloadAssets)
         {
             throw new CommandException("Option --media-dir cannot be used without --media.");
+        }
+
+        // Skip bot attachments can only be enabled if the download assets option is set
+        if (ShouldSkipBotAttachments && !ShouldDownloadAssets)
+        {
+            throw new CommandException(
+                "Option --skip-bot-attachments cannot be used without --media."
+            );
         }
 
         // Normalize JSON can only be enabled for JSON export format
@@ -468,6 +483,7 @@ public abstract class ExportCommandBase : DiscordCommandBase
                                         ShouldDownloadAssets,
                                         ShouldReuseAssets,
                                         ShouldUseNestedMediaFilePaths,
+                                        ShouldSkipBotAttachments,
                                         Locale,
                                         IsUtcNormalizationEnabled,
                                         ShouldNormalizeJson
