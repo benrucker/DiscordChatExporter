@@ -22,6 +22,7 @@ using DiscordChatExporter.Core.Exporting.Partitioning;
 using DiscordChatExporter.Core.Utils;
 using Gress;
 using Spectre.Console;
+using MemberCache = DiscordChatExporter.Core.Exporting.MemberCache;
 
 namespace DiscordChatExporter.Cli.Commands.Base;
 
@@ -273,6 +274,13 @@ public abstract class ExportCommandBase : DiscordCommandBase
         var channelsByGuildId = new ConcurrentDictionary<Snowflake, IReadOnlyList<Channel>>();
         var rolesByGuildId = new ConcurrentDictionary<Snowflake, IReadOnlyList<Role>>();
 
+        // Create shared member caches per guild to avoid redundant API calls during parallel exports
+        var memberCacheByGuildId = new ConcurrentDictionary<Snowflake, MemberCache>();
+        foreach (var guildId in guildIds)
+        {
+            memberCacheByGuildId[guildId] = new MemberCache(Discord, guildId);
+        }
+
         if (guildIds.Count > 0)
         {
             await console.Output.WriteLineAsync("Fetching guild data...");
@@ -434,12 +442,15 @@ public abstract class ExportCommandBase : DiscordCommandBase
                                         )
                                         : null;
 
-                                    // Use pre-fetched guild data
+                                    // Use pre-fetched guild data and shared member cache
                                     var guild = guildsById[channel.GuildId];
                                     var guildChannels = channelsByGuildId.GetValueOrDefault(
                                         channel.GuildId
                                     );
                                     var guildRoles = rolesByGuildId.GetValueOrDefault(
+                                        channel.GuildId
+                                    );
+                                    var memberCache = memberCacheByGuildId.GetValueOrDefault(
                                         channel.GuildId
                                     );
 
@@ -466,6 +477,7 @@ public abstract class ExportCommandBase : DiscordCommandBase
                                         request,
                                         guildChannels,
                                         guildRoles,
+                                        memberCache,
                                         progress.ToPercentageBased(),
                                         innerCancellationToken
                                     );

@@ -286,6 +286,7 @@ public partial class DashboardViewModel : ViewModelBase
                             request,
                             channels: null,
                             roles: null,
+                            memberCache: null,
                             progress,
                             cancellationToken
                         );

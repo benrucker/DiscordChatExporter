@@ -17,12 +17,14 @@ public class ChannelExporter(DiscordClient discord)
     /// <param name="request">The export request configuration.</param>
     /// <param name="channels">Optional pre-fetched channels for the guild (to avoid redundant API calls).</param>
     /// <param name="roles">Optional pre-fetched roles for the guild (to avoid redundant API calls).</param>
+    /// <param name="memberCache">Optional shared member cache for parallel exports (to avoid redundant API calls).</param>
     /// <param name="progress">Optional progress reporter.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     public async ValueTask<long> ExportChannelAsync(
         ExportRequest request,
         IReadOnlyList<Channel>? channels = null,
         IReadOnlyList<Role>? roles = null,
+        MemberCache? memberCache = null,
         IProgress<Percentage>? progress = null,
         CancellationToken cancellationToken = default
     )
@@ -39,7 +41,7 @@ public class ChannelExporter(DiscordClient discord)
         }
 
         // Build context
-        var context = new ExportContext(discord, request);
+        var context = new ExportContext(discord, request, memberCache);
 
         // Use pre-fetched channels/roles if provided, otherwise fetch from API
         if (channels is not null && roles is not null)

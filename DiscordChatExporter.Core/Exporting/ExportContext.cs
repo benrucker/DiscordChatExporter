@@ -13,8 +13,13 @@ using DiscordChatExporter.Core.Utils.Extensions;
 
 namespace DiscordChatExporter.Core.Exporting;
 
-internal class ExportContext(DiscordClient discord, ExportRequest request)
+internal class ExportContext(
+    DiscordClient discord,
+    ExportRequest request,
+    MemberCache? sharedMemberCache = null
+)
 {
+    // Local member cache for this context (used for TryGetMember lookups)
     private readonly Dictionary<Snowflake, Member?> _membersById = new();
     private readonly Dictionary<Snowflake, Channel> _channelsById = new();
     private readonly Dictionary<Snowflake, Role> _rolesById = new();
@@ -75,20 +80,31 @@ internal class ExportContext(DiscordClient discord, ExportRequest request)
         if (_membersById.ContainsKey(id))
             return;
 
-        var member = await Discord.TryGetGuildMemberAsync(Request.Guild.Id, id, cancellationToken);
+        Member? member;
 
-        // User may have left the guild since they were mentioned.
-        // Create a dummy member object based on the user info.
-        if (member is null)
+        // Use shared cache if available (for parallel exports)
+        if (sharedMemberCache is not null)
         {
-            var user = fallbackUser ?? await Discord.TryGetUserAsync(id, cancellationToken);
+            member = await sharedMemberCache.GetMemberAsync(id, fallbackUser, cancellationToken);
+        }
+        else
+        {
+            // Fallback to direct API call (single channel export)
+            member = await Discord.TryGetGuildMemberAsync(Request.Guild.Id, id, cancellationToken);
 
-            // User may have been deleted since they were mentioned
-            if (user is not null)
-                member = Member.CreateFallback(user);
+            // User may have left the guild since they were mentioned.
+            // Create a dummy member object based on the user info.
+            if (member is null)
+            {
+                var user = fallbackUser ?? await Discord.TryGetUserAsync(id, cancellationToken);
+
+                // User may have been deleted since they were mentioned
+                if (user is not null)
+                    member = Member.CreateFallback(user);
+            }
         }
 
-        // Store the result even if it's null, to avoid re-fetching non-existing members
+        // Store in local cache for TryGetMember lookups within this context
         _membersById[id] = member;
     }
 
