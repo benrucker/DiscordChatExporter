@@ -44,6 +44,21 @@ internal class JsonMessageWriter(Stream stream, ExportContext context)
             ? await PlainTextMarkdownVisitor.FormatAsync(Context, markdown, cancellationToken)
             : markdown;
 
+    private async ValueTask WriteAssetUrlAsync(
+        string propertyName,
+        string url,
+        CancellationToken cancellationToken = default
+    )
+    {
+        var result = await Context.ResolveAssetUrlWithStatusAsync(url, cancellationToken);
+        _writer.WriteString(propertyName, result.Url);
+
+        if (result.WasSkipped)
+            _writer.WriteString("downloadStatus", "skipped");
+        else if (result.WasFailed)
+            _writer.WriteString("downloadStatus", "failed");
+    }
+
     private async ValueTask WriteUserAsync(
         User user,
         bool includeRoles = true,
@@ -161,12 +176,10 @@ internal class JsonMessageWriter(Stream stream, ExportContext context)
 
         if (!string.IsNullOrWhiteSpace(embedImage.Url))
         {
-            _writer.WriteString(
+            await WriteAssetUrlAsync(
                 "url",
-                await Context.ResolveAssetUrlAsync(
-                    embedImage.ProxyUrl ?? embedImage.Url,
-                    cancellationToken
-                )
+                embedImage.ProxyUrl ?? embedImage.Url,
+                cancellationToken
             );
 
             _writer.WriteString("canonicalUrl", embedImage.Url);
@@ -188,12 +201,10 @@ internal class JsonMessageWriter(Stream stream, ExportContext context)
 
         if (!string.IsNullOrWhiteSpace(embedVideo.Url))
         {
-            _writer.WriteString(
+            await WriteAssetUrlAsync(
                 "url",
-                await Context.ResolveAssetUrlAsync(
-                    embedVideo.ProxyUrl ?? embedVideo.Url,
-                    cancellationToken
-                )
+                embedVideo.ProxyUrl ?? embedVideo.Url,
+                cancellationToken
             );
 
             _writer.WriteString("canonicalUrl", embedVideo.Url);
@@ -455,10 +466,7 @@ internal class JsonMessageWriter(Stream stream, ExportContext context)
             _writer.WriteStartObject();
 
             _writer.WriteString("id", attachment.Id.ToString());
-            _writer.WriteString(
-                "url",
-                await Context.ResolveAssetUrlAsync(attachment.Url, cancellationToken)
-            );
+            await WriteAssetUrlAsync("url", attachment.Url, cancellationToken);
             _writer.WriteString("fileName", attachment.FileName);
             _writer.WriteNumber("fileSizeBytes", attachment.FileSize.TotalBytes);
 
@@ -485,10 +493,7 @@ internal class JsonMessageWriter(Stream stream, ExportContext context)
             _writer.WriteString("id", sticker.Id.ToString());
             _writer.WriteString("name", sticker.Name);
             _writer.WriteString("format", sticker.Format.ToString());
-            _writer.WriteString(
-                "sourceUrl",
-                await Context.ResolveAssetUrlAsync(sticker.SourceUrl, cancellationToken)
-            );
+            await WriteAssetUrlAsync("sourceUrl", sticker.SourceUrl, cancellationToken);
 
             _writer.WriteEndObject();
         }
@@ -610,10 +615,7 @@ internal class JsonMessageWriter(Stream stream, ExportContext context)
             {
                 _writer.WriteStartObject();
                 _writer.WriteString("id", attachment.Id.ToString());
-                _writer.WriteString(
-                    "url",
-                    await Context.ResolveAssetUrlAsync(attachment.Url, cancellationToken)
-                );
+                await WriteAssetUrlAsync("url", attachment.Url, cancellationToken);
                 _writer.WriteString("fileName", attachment.FileName);
                 _writer.WriteNumber("fileSizeBytes", attachment.FileSize.TotalBytes);
                 _writer.WriteEndObject();
@@ -634,10 +636,7 @@ internal class JsonMessageWriter(Stream stream, ExportContext context)
                 _writer.WriteString("id", sticker.Id.ToString());
                 _writer.WriteString("name", sticker.Name);
                 _writer.WriteString("format", sticker.Format.ToString());
-                _writer.WriteString(
-                    "sourceUrl",
-                    await Context.ResolveAssetUrlAsync(sticker.SourceUrl, cancellationToken)
-                );
+                await WriteAssetUrlAsync("sourceUrl", sticker.SourceUrl, cancellationToken);
                 _writer.WriteEndObject();
             }
             _writer.WriteEndArray();

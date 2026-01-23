@@ -14,6 +14,33 @@ using DiscordChatExporter.Core.Utils.Extensions;
 
 namespace DiscordChatExporter.Core.Exporting;
 
+/// <summary>
+/// Result of an asset download operation.
+/// </summary>
+internal record AssetDownloadResult(
+    string FilePath,
+    bool WasSkipped = false,
+    bool WasFailed = false
+)
+{
+    /// <summary>
+    /// Creates a result for a successfully downloaded asset.
+    /// </summary>
+    public static AssetDownloadResult Success(string filePath) => new(filePath);
+
+    /// <summary>
+    /// Creates a result for a skipped download (embed-only URL, proxy thumbnail, etc.).
+    /// </summary>
+    public static AssetDownloadResult Skipped(string originalUrl) =>
+        new(originalUrl, WasSkipped: true);
+
+    /// <summary>
+    /// Creates a result for a failed download (invalid resource, wrong content type, etc.).
+    /// </summary>
+    public static AssetDownloadResult Failed(string originalUrl) =>
+        new(originalUrl, WasFailed: true);
+}
+
 internal partial class ExportAssetDownloader(
     string workingDirPath,
     bool reuse,
@@ -28,11 +55,17 @@ internal partial class ExportAssetDownloader(
     // File paths of the previously downloaded assets
     private readonly Dictionary<string, string> _previousPathsByUrl = new(StringComparer.Ordinal);
 
-    public async ValueTask<string> DownloadAsync(
+    public async ValueTask<AssetDownloadResult> DownloadAsync(
         string url,
         CancellationToken cancellationToken = default
     )
     {
+        // Check if this URL should be skipped entirely (embed-only sites, proxy thumbnails)
+        if (ShouldSkipDownload(url))
+        {
+            return AssetDownloadResult.Skipped(url);
+        }
+
         var localFilePath = useNestedMediaFilePaths
             ? GetFilePathFromUrl(url)
             : GetFileNameFromUrlLegacy(url);
@@ -41,11 +74,14 @@ internal partial class ExportAssetDownloader(
         using var _ = await Locker.LockAsync(filePath, cancellationToken);
 
         if (_previousPathsByUrl.TryGetValue(url, out var cachedFilePath))
-            return cachedFilePath;
+            return AssetDownloadResult.Success(cachedFilePath);
 
         // Reuse existing files if we're allowed to
         if (reuse && File.Exists(filePath))
-            return _previousPathsByUrl[url] = filePath;
+        {
+            _previousPathsByUrl[url] = filePath;
+            return AssetDownloadResult.Success(filePath);
+        }
 
         Directory.CreateDirectory(workingDirPath);
 
@@ -57,21 +93,56 @@ internal partial class ExportAssetDownloader(
 
         Log.Log($"Downloading asset: {assetName}");
 
+        string? finalFilePath = null;
+        var downloadFailed = false;
+
         await Http.ResiliencePipeline.ExecuteAsync(
             async innerCancellationToken =>
             {
-                // Download the file
+                // Download the file to memory first to check content
                 using var response = await Http.Client.GetAsync(url, innerCancellationToken);
-                var directory = Path.GetDirectoryName(filePath);
+                var content = await response.Content.ReadAsByteArrayAsync(innerCancellationToken);
+                var contentType = response.Content.Headers.ContentType?.MediaType;
+
+                // Check for invalid resource responses
+                if (IsInvalidResourceResponse(content, contentType))
+                {
+                    Log.Log($"Invalid resource response for: {assetName}");
+                    downloadFailed = true;
+                    return;
+                }
+
+                // Determine the final file path, potentially adding extension from Content-Type
+                var currentFilePath = filePath;
+                var currentExtension = Path.GetExtension(currentFilePath);
+
+                // If no extension or very short extension, try to get from Content-Type
+                if (string.IsNullOrEmpty(currentExtension) || currentExtension.Length <= 1)
+                {
+                    var extensionFromContentType = GetExtensionFromContentType(contentType);
+                    if (!string.IsNullOrEmpty(extensionFromContentType))
+                    {
+                        currentFilePath = filePath + extensionFromContentType;
+                    }
+                }
+
+                var directory = Path.GetDirectoryName(currentFilePath);
                 if (directory != null)
                     Directory.CreateDirectory(directory);
-                await using var output = File.Create(filePath);
-                await response.Content.CopyToAsync(output, innerCancellationToken);
+
+                await File.WriteAllBytesAsync(currentFilePath, content, innerCancellationToken);
+                finalFilePath = currentFilePath;
             },
             cancellationToken
         );
 
-        return _previousPathsByUrl[url] = filePath;
+        if (downloadFailed || finalFilePath is null)
+        {
+            return AssetDownloadResult.Failed(url);
+        }
+
+        _previousPathsByUrl[url] = finalFilePath;
+        return AssetDownloadResult.Success(finalFilePath);
     }
 }
 
@@ -188,6 +259,18 @@ internal partial class ExportAssetDownloader
 
     private static string GetExternalFilePath(Uri uri)
     {
+        // Special case: Twemoji URLs from jsdelivr CDN
+        // These are static files that don't need hashing - preserve original path structure
+        if (
+            uri.Host.Equals("cdn.jsdelivr.net", StringComparison.OrdinalIgnoreCase)
+            && uri.AbsolutePath.Contains("/twemoji", StringComparison.OrdinalIgnoreCase)
+        )
+        {
+            // Preserve as: twemoji/{filename}.svg
+            var twemojiFileName = Path.GetFileName(uri.AbsolutePath);
+            return Path.Combine("twemoji", Path.EscapeFileName(twemojiFileName));
+        }
+
         // For external URLs, use full SHA256 hash of the URL to guarantee uniqueness.
         // URLs can be up to 2000+ characters, far exceeding filesystem limits,
         // so we hash them for safe storage while maintaining zero collision risk.
@@ -270,5 +353,123 @@ internal partial class ExportAssetDownloader
         return Path.EscapeFileName(
             fileNameWithoutExtension.Truncate(42) + '-' + urlHash + fileExtension
         );
+    }
+}
+
+internal partial class ExportAssetDownloader
+{
+    /// <summary>
+    /// Checks if a URL points to a site that only provides embed HTML pages, not downloadable media.
+    /// </summary>
+    private static bool IsEmbedOnlyUrl(Uri uri)
+    {
+        return uri.Host.EndsWith("youtube.com", StringComparison.OrdinalIgnoreCase)
+            || uri.Host.EndsWith("youtu.be", StringComparison.OrdinalIgnoreCase)
+            || uri.Host.EndsWith("twitch.tv", StringComparison.OrdinalIgnoreCase)
+            || uri.Host.EndsWith("twitter.com", StringComparison.OrdinalIgnoreCase)
+            || uri.Host.EndsWith("x.com", StringComparison.OrdinalIgnoreCase)
+            || uri.Host.EndsWith("soundcloud.com", StringComparison.OrdinalIgnoreCase)
+            || uri.Host.EndsWith("spotify.com", StringComparison.OrdinalIgnoreCase)
+            || uri.Host.EndsWith("vimeo.com", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Checks if a URL points to Discord's image proxy thumbnails which are regenerated on demand.
+    /// </summary>
+    private static bool IsProxyThumbnailUrl(Uri uri)
+    {
+        // Discord's image proxy for external thumbnails (e.g., images-ext-1.discordapp.net)
+        return uri.Host.StartsWith("images-ext", StringComparison.OrdinalIgnoreCase)
+            && uri.Host.EndsWith(".discordapp.net", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Checks if a URL should be skipped for downloading.
+    /// </summary>
+    private static bool ShouldSkipDownload(string url)
+    {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
+            return false;
+
+        return IsProxyThumbnailUrl(uri) || IsEmbedOnlyUrl(uri);
+    }
+
+    /// <summary>
+    /// Maps Content-Type header values to file extensions.
+    /// </summary>
+    private static string? GetExtensionFromContentType(string? contentType)
+    {
+        if (string.IsNullOrEmpty(contentType))
+            return null;
+
+        // Extract just the media type without parameters (e.g., "image/png; charset=utf-8" -> "image/png")
+        var mediaType = contentType.Split(';')[0].Trim().ToLowerInvariant();
+
+        return mediaType switch
+        {
+            "image/png" => ".png",
+            "image/jpeg" => ".jpg",
+            "image/gif" => ".gif",
+            "image/webp" => ".webp",
+            "image/svg+xml" => ".svg",
+            "image/avif" => ".avif",
+            "image/bmp" => ".bmp",
+            "image/tiff" => ".tiff",
+            "video/mp4" => ".mp4",
+            "video/webm" => ".webm",
+            "video/quicktime" => ".mov",
+            "audio/mpeg" => ".mp3",
+            "audio/ogg" => ".ogg",
+            "audio/wav" => ".wav",
+            "audio/webm" => ".weba",
+            "audio/flac" => ".flac",
+            "application/json" => ".json",
+            _ => null,
+        };
+    }
+
+    /// <summary>
+    /// Detects if downloaded content is an invalid resource response instead of actual media.
+    /// </summary>
+    private static bool IsInvalidResourceResponse(byte[] content, string? contentType)
+    {
+        if (!string.IsNullOrEmpty(contentType))
+        {
+            var mediaType = contentType.Split(';')[0].Trim().ToLowerInvariant();
+
+            // JSON is never valid media - always reject
+            if (mediaType is "application/json")
+                return true;
+
+            // Small text/HTML/XML responses are likely error messages
+            if (mediaType is "text/plain" or "text/html" or "application/xml")
+            {
+                if (content.Length < 1000)
+                    return true;
+            }
+        }
+
+        // Check for very small files that start with error indicators
+        if (content.Length < 100)
+        {
+            try
+            {
+                var text = Encoding.UTF8.GetString(content);
+                if (
+                    text.StartsWith("Invalid", StringComparison.OrdinalIgnoreCase)
+                    || text.StartsWith("<!DOCTYPE", StringComparison.OrdinalIgnoreCase)
+                    || text.StartsWith("<html", StringComparison.OrdinalIgnoreCase)
+                )
+                {
+                    return true;
+                }
+            }
+            catch
+            {
+                // Not valid UTF-8 text, so it's likely binary content
+            }
+        }
+
+        return false;
     }
 }
