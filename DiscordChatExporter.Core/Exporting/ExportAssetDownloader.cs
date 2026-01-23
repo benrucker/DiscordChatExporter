@@ -101,6 +101,23 @@ internal partial class ExportAssetDownloader(
             {
                 // Download the file to memory first to check content
                 using var response = await Http.Client.GetAsync(url, innerCancellationToken);
+
+                // Fail fast on client errors - these won't succeed on retry
+                if (
+                    response.StatusCode
+                    is System.Net.HttpStatusCode.NotFound
+                        or System.Net.HttpStatusCode.Forbidden
+                        or System.Net.HttpStatusCode.Gone
+                        or System.Net.HttpStatusCode.Unauthorized
+                )
+                {
+                    Log.Log($"HTTP {(int)response.StatusCode} for: {assetName}");
+                    downloadFailed = true;
+                    return;
+                }
+
+                response.EnsureSuccessStatusCode();
+
                 var content = await response.Content.ReadAsByteArrayAsync(innerCancellationToken);
                 var contentType = response.Content.Headers.ContentType?.MediaType;
 
@@ -370,7 +387,18 @@ internal partial class ExportAssetDownloader
             || uri.Host.EndsWith("x.com", StringComparison.OrdinalIgnoreCase)
             || uri.Host.EndsWith("soundcloud.com", StringComparison.OrdinalIgnoreCase)
             || uri.Host.EndsWith("spotify.com", StringComparison.OrdinalIgnoreCase)
-            || uri.Host.EndsWith("vimeo.com", StringComparison.OrdinalIgnoreCase);
+            || uri.Host.EndsWith("vimeo.com", StringComparison.OrdinalIgnoreCase)
+            || uri.Host.EndsWith("tiktok.com", StringComparison.OrdinalIgnoreCase)
+            || uri.Host.EndsWith("instagram.com", StringComparison.OrdinalIgnoreCase)
+            || uri.Host.EndsWith("facebook.com", StringComparison.OrdinalIgnoreCase)
+            || uri.Host.EndsWith("reddit.com", StringComparison.OrdinalIgnoreCase)
+            || uri.Host.EndsWith("redd.it", StringComparison.OrdinalIgnoreCase)
+            || uri.Host.EndsWith("dailymotion.com", StringComparison.OrdinalIgnoreCase)
+            || uri.Host.EndsWith("dai.ly", StringComparison.OrdinalIgnoreCase)
+            || uri.Host.EndsWith("bandcamp.com", StringComparison.OrdinalIgnoreCase)
+            || uri.Host.EndsWith("kickstarter.com", StringComparison.OrdinalIgnoreCase)
+            || uri.Host.EndsWith("streamable.com", StringComparison.OrdinalIgnoreCase)
+            || uri.Host.EndsWith("clips.twitch.tv", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
