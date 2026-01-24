@@ -141,6 +141,34 @@ internal class ExportContext(
         GetUserRoles(id).Where(r => r.Color is not null).Select(r => r.Color).FirstOrDefault();
 
     /// <summary>
+    /// Resolves an attachment URL, downloading the asset if configured to do so.
+    /// Skips downloading if the author is a bot and ShouldSkipBotAttachments is enabled.
+    /// Returns both the resolved URL and download status information.
+    /// </summary>
+    public async ValueTask<AssetResolveResult> ResolveAttachmentUrlWithStatusAsync(
+        string url,
+        User author,
+        CancellationToken cancellationToken = default
+    )
+    {
+        if (Request.ShouldSkipBotAttachments && author.IsBot)
+            return new AssetResolveResult(url, WasSkipped: true);
+
+        return await ResolveAssetUrlWithStatusAsync(url, cancellationToken);
+    }
+
+    /// <summary>
+    /// Resolves an attachment URL, downloading the asset if configured to do so.
+    /// Skips downloading if the author is a bot and ShouldSkipBotAttachments is enabled.
+    /// Returns just the resolved URL (for backward compatibility).
+    /// </summary>
+    public async ValueTask<string> ResolveAttachmentUrlAsync(
+        string url,
+        User author,
+        CancellationToken cancellationToken = default
+    ) => (await ResolveAttachmentUrlWithStatusAsync(url, author, cancellationToken)).Url;
+
+    /// <summary>
     /// Resolves an asset URL, downloading the asset if configured to do so.
     /// Returns both the resolved URL and download status information.
     /// </summary>

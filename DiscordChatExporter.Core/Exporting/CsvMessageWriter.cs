@@ -28,6 +28,7 @@ internal partial class CsvMessageWriter(Stream stream, ExportContext context)
 
     private async ValueTask WriteAttachmentsAsync(
         IReadOnlyList<Attachment> attachments,
+        User author,
         CancellationToken cancellationToken = default
     )
     {
@@ -39,7 +40,13 @@ internal partial class CsvMessageWriter(Stream stream, ExportContext context)
 
             buffer
                 .AppendIfNotEmpty(',')
-                .Append(await Context.ResolveAssetUrlAsync(attachment.Url, cancellationToken));
+                .Append(
+                    await Context.ResolveAttachmentUrlAsync(
+                        attachment.Url,
+                        author,
+                        cancellationToken
+                    )
+                );
         }
 
         await _writer.WriteAsync(CsvEncode(buffer.ToString()));
@@ -102,7 +109,7 @@ internal partial class CsvMessageWriter(Stream stream, ExportContext context)
         await _writer.WriteAsync(',');
 
         // Attachments
-        await WriteAttachmentsAsync(message.Attachments, cancellationToken);
+        await WriteAttachmentsAsync(message.Attachments, message.Author, cancellationToken);
         await _writer.WriteAsync(',');
 
         // Reactions

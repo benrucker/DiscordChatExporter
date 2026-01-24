@@ -59,6 +59,26 @@ internal class JsonMessageWriter(Stream stream, ExportContext context)
             _writer.WriteString("downloadStatus", "failed");
     }
 
+    private async ValueTask WriteAttachmentUrlAsync(
+        string propertyName,
+        string url,
+        User author,
+        CancellationToken cancellationToken = default
+    )
+    {
+        var result = await Context.ResolveAttachmentUrlWithStatusAsync(
+            url,
+            author,
+            cancellationToken
+        );
+        _writer.WriteString(propertyName, result.Url);
+
+        if (result.WasSkipped)
+            _writer.WriteString("downloadStatus", "skipped");
+        else if (result.WasFailed)
+            _writer.WriteString("downloadStatus", "failed");
+    }
+
     private async ValueTask WriteUserAsync(
         User user,
         bool includeRoles = true,
@@ -466,7 +486,7 @@ internal class JsonMessageWriter(Stream stream, ExportContext context)
             _writer.WriteStartObject();
 
             _writer.WriteString("id", attachment.Id.ToString());
-            await WriteAssetUrlAsync("url", attachment.Url, cancellationToken);
+            await WriteAttachmentUrlAsync("url", attachment.Url, message.Author, cancellationToken);
             _writer.WriteString("fileName", attachment.FileName);
             _writer.WriteNumber("fileSizeBytes", attachment.FileSize.TotalBytes);
 
@@ -615,7 +635,12 @@ internal class JsonMessageWriter(Stream stream, ExportContext context)
             {
                 _writer.WriteStartObject();
                 _writer.WriteString("id", attachment.Id.ToString());
-                await WriteAssetUrlAsync("url", attachment.Url, cancellationToken);
+                await WriteAttachmentUrlAsync(
+                    "url",
+                    attachment.Url,
+                    message.Author,
+                    cancellationToken
+                );
                 _writer.WriteString("fileName", attachment.FileName);
                 _writer.WriteNumber("fileSizeBytes", attachment.FileSize.TotalBytes);
                 _writer.WriteEndObject();

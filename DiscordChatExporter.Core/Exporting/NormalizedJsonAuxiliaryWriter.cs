@@ -46,8 +46,20 @@ internal class NormalizedJsonAuxiliaryWriter : IAsyncDisposable
         }
     }
 
-    public async ValueTask DisposeAsync()
+    /// <summary>
+    /// Flushes accumulated user/member/role data to auxiliary files.
+    /// Called at partition boundaries to ensure data is not lost on crash.
+    /// </summary>
+    public async ValueTask FlushAsync()
     {
+        // Skip if nothing to flush
+        if (
+            _encounteredUsers.Count == 0
+            && _encounteredMembers.Count == 0
+            && _encounteredRoles.Count == 0
+        )
+            return;
+
         var isDirect = _context.Request.Channel.IsDirect;
         var dirPath = _context.Request.OutputDirPath;
 
@@ -60,6 +72,18 @@ internal class NormalizedJsonAuxiliaryWriter : IAsyncDisposable
             await WriteMembersFileAsync(dirPath);
             await WriteRolesFileAsync(dirPath);
         }
+
+        // Clear tracked data after successful flush
+        // (the data is now persisted, no need to re-write on next flush)
+        _encounteredUsers.Clear();
+        _encounteredMembers.Clear();
+        _encounteredRoles.Clear();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        // Final flush of any remaining tracked data
+        await FlushAsync();
     }
 
     private async Task WriteUsersFileAsync(string dirPath)

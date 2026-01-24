@@ -275,6 +275,7 @@ public partial class DashboardViewModel : ViewModelBase
                             dialog.MessageFilter,
                             dialog.ShouldFormatMarkdown,
                             dialog.ShouldDownloadAssets,
+                            shouldSkipBotAttachments: false,
                             dialog.ShouldReuseAssets,
                             dialog.ShouldUseNestedMediaFilePaths,
                             _settingsService.Locale,

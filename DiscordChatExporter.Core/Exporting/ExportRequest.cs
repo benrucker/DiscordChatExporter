@@ -37,6 +37,8 @@ public partial class ExportRequest
 
     public bool ShouldDownloadAssets { get; }
 
+    public bool ShouldSkipBotAttachments { get; }
+
     public bool ShouldReuseAssets { get; }
 
     public bool ShouldUseNestedMediaFilePaths { get; }
@@ -61,6 +63,7 @@ public partial class ExportRequest
         MessageFilter messageFilter,
         bool shouldFormatMarkdown,
         bool shouldDownloadAssets,
+        bool shouldSkipBotAttachments,
         bool shouldReuseAssets,
         bool shouldUseNestedMediaFilePaths,
         string? locale,
@@ -77,6 +80,7 @@ public partial class ExportRequest
         MessageFilter = messageFilter;
         ShouldFormatMarkdown = shouldFormatMarkdown;
         ShouldDownloadAssets = shouldDownloadAssets;
+        ShouldSkipBotAttachments = shouldSkipBotAttachments;
         ShouldReuseAssets = shouldReuseAssets;
         ShouldUseNestedMediaFilePaths = shouldUseNestedMediaFilePaths;
         Locale = locale;

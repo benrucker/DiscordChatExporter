@@ -107,6 +107,13 @@ public abstract class ExportCommandBase : DiscordCommandBase
     public bool ShouldDownloadAssets { get; init; }
 
     [CommandOption(
+        "skip-bot-attachments",
+        Description = "Skip downloading file attachments from bot accounts. "
+            + "Avatars, emojis, and other assets from bots are still downloaded."
+    )]
+    public bool ShouldSkipBotAttachments { get; init; } = false;
+
+    [CommandOption(
         "reuse-media",
         Description = "Reuse previously downloaded assets to avoid redundant requests. "
             + "Keep --media-nested consistent across runs for best results."
@@ -190,6 +197,14 @@ public abstract class ExportCommandBase : DiscordCommandBase
         if (ShouldUseNestedMediaFilePaths && !ShouldDownloadAssets)
         {
             throw new CommandException("Option --media-nested cannot be used without --media.");
+        }
+
+        // Skip bot attachments can only be enabled if the download assets option is set
+        if (ShouldSkipBotAttachments && !ShouldDownloadAssets)
+        {
+            throw new CommandException(
+                "Option --skip-bot-attachments cannot be used without --media."
+            );
         }
 
         // Assets directory can only be specified if the download assets option is set
@@ -466,6 +481,7 @@ public abstract class ExportCommandBase : DiscordCommandBase
                                         MessageFilter,
                                         ShouldFormatMarkdown,
                                         ShouldDownloadAssets,
+                                        ShouldSkipBotAttachments,
                                         ShouldReuseAssets,
                                         ShouldUseNestedMediaFilePaths,
                                         Locale,

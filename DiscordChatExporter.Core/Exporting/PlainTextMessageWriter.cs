@@ -38,6 +38,7 @@ internal class PlainTextMessageWriter(Stream stream, ExportContext context)
 
     private async ValueTask WriteAttachmentsAsync(
         IReadOnlyList<Attachment> attachments,
+        User author,
         CancellationToken cancellationToken = default
     )
     {
@@ -51,7 +52,7 @@ internal class PlainTextMessageWriter(Stream stream, ExportContext context)
             cancellationToken.ThrowIfCancellationRequested();
 
             await _writer.WriteLineAsync(
-                await Context.ResolveAssetUrlAsync(attachment.Url, cancellationToken)
+                await Context.ResolveAttachmentUrlAsync(attachment.Url, author, cancellationToken)
             );
         }
 
@@ -227,6 +228,7 @@ internal class PlainTextMessageWriter(Stream stream, ExportContext context)
 
     private async ValueTask WriteForwardedMessageAsync(
         MessageSnapshot forwardedMessage,
+        User author,
         CancellationToken cancellationToken = default
     )
     {
@@ -246,7 +248,7 @@ internal class PlainTextMessageWriter(Stream stream, ExportContext context)
             );
         }
 
-        await WriteAttachmentsAsync(forwardedMessage.Attachments, cancellationToken);
+        await WriteAttachmentsAsync(forwardedMessage.Attachments, author, cancellationToken);
         await WriteEmbedsAsync(forwardedMessage.Embeds, cancellationToken);
         await WriteStickersAsync(forwardedMessage.Stickers, cancellationToken);
 
@@ -280,11 +282,15 @@ internal class PlainTextMessageWriter(Stream stream, ExportContext context)
         // Forwarded message content
         if (message.ForwardedMessage is not null)
         {
-            await WriteForwardedMessageAsync(message.ForwardedMessage, cancellationToken);
+            await WriteForwardedMessageAsync(
+                message.ForwardedMessage,
+                message.Author,
+                cancellationToken
+            );
         }
 
         // Attachments, embeds, reactions, etc.
-        await WriteAttachmentsAsync(message.Attachments, cancellationToken);
+        await WriteAttachmentsAsync(message.Attachments, message.Author, cancellationToken);
         await WriteEmbedsAsync(message.Embeds, cancellationToken);
         await WriteStickersAsync(message.Stickers, cancellationToken);
         await WriteReactionsAsync(message.Reactions, cancellationToken);
