@@ -31,5 +31,13 @@ internal abstract class MessageWriter(Stream stream, ExportContext context) : IA
     public virtual ValueTask WritePostambleAsync(CancellationToken cancellationToken = default) =>
         default;
 
+    /// <summary>
+    /// Flushes any auxiliary data (e.g., normalized JSON users/members/roles).
+    /// Called at partition boundaries to ensure data is persisted incrementally.
+    /// </summary>
+    public virtual ValueTask FlushAuxiliaryDataAsync(
+        CancellationToken cancellationToken = default
+    ) => default;
+
     public virtual async ValueTask DisposeAsync() => await Stream.DisposeAsync();
 }

@@ -701,6 +701,14 @@ internal class JsonMessageWriter(Stream stream, ExportContext context)
         await _writer.FlushAsync(cancellationToken);
     }
 
+    public override async ValueTask FlushAuxiliaryDataAsync(
+        CancellationToken cancellationToken = default
+    )
+    {
+        if (_auxiliaryWriter is not null)
+            await _auxiliaryWriter.FlushAsync();
+    }
+
     public override async ValueTask DisposeAsync()
     {
         await _writer.DisposeAsync();

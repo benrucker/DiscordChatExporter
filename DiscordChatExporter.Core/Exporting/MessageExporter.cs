@@ -50,6 +50,10 @@ internal partial class MessageExporter(ExportContext context) : IAsyncDisposable
             try
             {
                 await _writer.WritePostambleAsync(cancellationToken);
+
+                // Flush auxiliary data (e.g., normalized JSON users/members/roles)
+                // at partition boundaries to ensure incremental persistence
+                await _writer.FlushAuxiliaryDataAsync(cancellationToken);
             }
             // Writer must be disposed, even if it fails to write the postamble
             finally
